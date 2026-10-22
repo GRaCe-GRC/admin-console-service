@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: admin-console-service
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: admin-console-service
+    description: Shared backend for the GRaCe-GRC admin console
