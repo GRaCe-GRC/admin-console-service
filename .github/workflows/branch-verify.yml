@@ -1,13 +1,13 @@
-name: CI
+name: Branch verify
 
 on:
   push:
-    branches: [ main ]
+    branches-ignore: [ main ]
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  ci:
+  verify:
     uses: GRaCe-GRC/.github/.github/workflows/maven-ci.yml@main
