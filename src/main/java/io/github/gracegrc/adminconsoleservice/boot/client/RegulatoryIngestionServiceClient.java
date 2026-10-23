@@ -47,6 +47,10 @@ public class RegulatoryIngestionServiceClient {
 			.body(RegulatoryIngestionAuthorityResponseDto.class);
 	}
 
+	public void deleteAuthority(UUID id) {
+		regulatoryIngestionServiceRestClient.delete().uri(AUTHORITIES_PATH + "/{id}", id).retrieve().toBodilessEntity();
+	}
+
 	private static UUID idFrom(URI location) {
 		if (location == null) {
 			throw new RestClientException(
