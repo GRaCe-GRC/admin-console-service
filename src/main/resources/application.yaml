@@ -2,6 +2,9 @@ spring:
   application:
     name: admin-console-service
 
+regulatory-ingestion-service:
+  base-url: ${REGULATORY_INGESTION_SERVICE_URL:http://localhost:8081}
+
 management:
   endpoints:
     web:

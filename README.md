@@ -2,21 +2,47 @@
 
 Shared backend for the GRaCe-GRC admin console: review workflows and configuration for all projects.
 
-> **Status:** starter app. It starts a Spring Boot application with Actuator endpoints and nothing else. Features arrive in later stories.
+> **Status:** backs the authorities dashboard of the admin console, through the
+> [regulatory ingestion service](https://github.com/GRaCe-GRC/regulatory-ingestion-service).
 
 ## Stack
 - Java (latest LTS at setup), Spring Boot (latest stable at setup)
 - Maven, via the Maven wrapper (`./mvnw`)
 
 ## Getting started
+The service calls the regulatory ingestion service (which calls the Regulatory API). To run them
+on one machine, start those first (see their READMEs), then this service on another port:
+
 ```bash
-./mvnw spring-boot:run
+SERVER_PORT=8082 ./mvnw spring-boot:run
 ```
+
+| Environment variable | Default | Description |
+|---|---|---|
+| `REGULATORY_INGESTION_SERVICE_URL` | `http://localhost:8081` | Base URL of the regulatory ingestion service |
 
 | Endpoint | Description |
 |---|---|
 | `GET http://localhost:8080/actuator/health` | Health status (`UP`) |
 | `GET http://localhost:8080/actuator/info` | Application info |
+| `GET http://localhost:8080/swagger-ui.html` | API documentation (OpenAPI at `/v3/api-docs`) |
+
+## Dashboard API
+
+Endpoints are shaped around the admin console screens, not the domain.
+
+| Method and path | Body | Response |
+|---|---|---|
+| `GET /api/dashboard/authorities` | | `200` with the list of authorities for the dashboard table |
+| `GET /api/dashboard/authorities/{id}` | | `200` with the authority |
+| `POST /api/dashboard/authorities` | `name`, `jurisdiction` | `201`, empty body, `Location` header |
+
+An authority is `{id, name, jurisdiction, createdAt, enabled, createdBy}`. New authorities get
+`createdBy = admin-console` until authentication exists. Requests are validated here (`400` with
+an `errors` field per property); `4xx` problem details from the ingestion service (`404`, `409`
+duplicate name) are returned unchanged; when it fails, cannot be reached or returns no `Location`,
+the response is `502`. Calls to the ingestion service are in
+`boot/client/RegulatoryIngestionServiceClient`.
 
 ## Test and build
 ```bash
