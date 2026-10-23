@@ -38,4 +38,9 @@ public class RegulatoryIngestionServiceImpl implements RegulatoryIngestionServic
 		return RegulatoryAuthorityMapper.toResponseDto(regulatoryIngestionServiceClient.findAuthorityById(id));
 	}
 
+	@Override
+	public void deleteAuthority(UUID id) {
+		regulatoryIngestionServiceClient.deleteAuthority(id);
+	}
+
 }

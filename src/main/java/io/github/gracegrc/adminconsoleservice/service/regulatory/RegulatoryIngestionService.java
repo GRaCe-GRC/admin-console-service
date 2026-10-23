@@ -13,4 +13,6 @@ public interface RegulatoryIngestionService {
 
 	RegulatoryAuthorityResponseDto findAuthorityById(UUID id);
 
+	void deleteAuthority(UUID id);
+
 }

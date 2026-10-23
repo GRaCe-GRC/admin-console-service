@@ -36,6 +36,7 @@ Endpoints are shaped around the admin console screens, not the domain.
 | `GET /api/dashboard/authorities` | | `200` with the list of authorities for the dashboard table |
 | `GET /api/dashboard/authorities/{id}` | | `200` with the authority |
 | `POST /api/dashboard/authorities` | `name`, `jurisdiction` | `201`, empty body, `Location` header |
+| `DELETE /api/dashboard/authorities/{id}` | | `204`, empty body |
 
 An authority is `{id, name, jurisdiction, createdAt, enabled, createdBy}`. New authorities get
 `createdBy = admin-console` until authentication exists. Requests are validated here (`400` with

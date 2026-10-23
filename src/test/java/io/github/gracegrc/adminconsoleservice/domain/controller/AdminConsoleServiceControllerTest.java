@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityResponseDto;
@@ -146,4 +147,38 @@ class AdminConsoleServiceControllerTest {
 			.isLenientlyEqualTo("{\"status\":502,\"detail\":\"The regulatory ingestion service is unavailable\"}");
 	}
 
+	@Test
+	void deleteReturnsNoContent() {
+		assertThat(mvc.delete().uri("/api/dashboard/authorities/{id}", ID)).hasStatus(HttpStatus.NO_CONTENT).body().isEmpty();
+		then(regulatoryIngestionService).should().deleteAuthority(ID);
+	}
+
+	@Test
+	void deleteWithAnUnknownIdReturnsTheNotFoundUnchanged() {
+		String problem = "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"Authority " + ID + " not found\"}";
+		HttpHeaders headers = new HttpHeaders();
+		headers.setContentType(MediaType.APPLICATION_PROBLEM_JSON);
+		willThrow(HttpClientErrorException.create(HttpStatus.NOT_FOUND, "Not Found", headers,
+				problem.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8))
+			.given(regulatoryIngestionService)
+			.deleteAuthority(ID);
+
+		assertThat(mvc.delete().uri("/api/dashboard/authorities/{id}", ID)).hasStatus(HttpStatus.NOT_FOUND)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void deleteWhenTheIngestionServiceIsUnreachableReturnsBadGateway() {
+		willThrow(new ResourceAccessException("Connection refused")).given(regulatoryIngestionService).deleteAuthority(ID);
+
+		assertThat(mvc.delete().uri("/api/dashboard/authorities/{id}", ID)).hasStatus(HttpStatus.BAD_GATEWAY);
+	}
+
+	@Test
+	void deleteWithAMalformedIdReturnsBadRequest() {
+		assertThat(mvc.delete().uri("/api/dashboard/authorities/not-a-uuid")).hasStatus(HttpStatus.BAD_REQUEST);
+		then(regulatoryIngestionService).shouldHaveNoInteractions();
+	}
 }
