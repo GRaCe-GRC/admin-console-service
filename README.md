@@ -23,9 +23,28 @@ Shared backend for the GRaCe-GRC admin console: review workflows and configurati
 ./mvnw verify
 ```
 
-CI runs the same command on every pull request through the shared
-[Maven CI workflow](https://github.com/GRaCe-GRC/.github/blob/main/.github/workflows/maven-ci.yml)
-(`.github/workflows/ci.yml`).
+Branch verify runs the same command on every push to a branch and on every pull request, through the
+shared [Maven CI workflow](https://github.com/GRaCe-GRC/.github/blob/main/.github/workflows/maven-ci.yml) (`.github/workflows/branch-verify.yml`).
+
+## Versions and images
+Versions follow semantic versioning and come from the commit messages. Every merge to `main`
+runs `.github/workflows/release.yml`: the CI again, then the shared
+[release workflow](https://github.com/GRaCe-GRC/.github/blob/main/.github/workflows/README.md#release):
+
+| Commit | Release |
+|---|---|
+| `fix: GRC-<n>: ...` | Patch |
+| `feat: GRC-<n>: ...` | Minor |
+| `chore:`, `docs:`, ... | No release |
+
+A release creates the `vX.Y.Z` tag, a GitHub Release with notes, and the image
+`ghcr.io/grace-grc/admin-console-service:<version>` (also tagged `latest`). The version is not stored in
+`pom.xml`: it uses `${revision}`, which is `0.0.1-SNAPSHOT` for local builds and the release
+version in CI.
+
+```bash
+docker pull ghcr.io/grace-grc/admin-console-service:latest
+```
 
 ## Architecture
 This service serves all three projects. Their architecture diagrams show one admin console
