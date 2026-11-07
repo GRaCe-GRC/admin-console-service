@@ -2,7 +2,7 @@
 
 Shared backend for the GRaCe-GRC admin console: review workflows and configuration for all projects.
 
-> **Status:** backs the authorities dashboard of the admin console, through the
+> **Status:** backs the dashboard of the admin console, through the
 > [regulatory ingestion service](https://github.com/GRaCe-GRC/regulatory-ingestion-service).
 
 ## Stack
@@ -11,7 +11,8 @@ Shared backend for the GRaCe-GRC admin console: review workflows and configurati
 
 ## Getting started
 The service calls the regulatory ingestion service (which calls the Regulatory API). To run them
-on one machine, start those first (see their READMEs), then this service on another port:
+on one machine, start those first (see their READMEs), then this
+service on another port:
 
 ```bash
 SERVER_PORT=8082 ./mvnw spring-boot:run
@@ -33,17 +34,44 @@ Endpoints are shaped around the admin console screens, not the domain.
 
 | Method and path | Body | Response |
 |---|---|---|
-| `GET /api/dashboard/authorities` | | `200` with the list of authorities for the dashboard table |
-| `GET /api/dashboard/authorities/{id}` | | `200` with the authority |
+| `GET /api/dashboard` | | `200` with the whole dashboard (see below) |
 | `POST /api/dashboard/authorities` | `name`, `jurisdiction` | `201`, empty body, `Location` header |
 | `DELETE /api/dashboard/authorities/{id}` | | `204`, empty body |
+| `POST /api/dashboard/frameworks` | `authorityId`, `name`, `shortName`, `citation` | `201`, empty body, `Location` header (`/api/dashboard/frameworks/{id}`) |
+| `DELETE /api/dashboard/frameworks/{id}` | | `204`, empty body |
 
-An authority is `{id, name, jurisdiction, createdAt, enabled, createdBy}`. New authorities get
-`createdBy = admin-console` until authentication exists. Requests are validated here (`400` with
-an `errors` field per property); `4xx` problem details from the ingestion service (`404`, `409`
-duplicate name) are returned unchanged; when it fails, cannot be reached or returns no `Location`,
-the response is `502`. Calls to the ingestion service are in
+New authorities and frameworks get `createdBy = admin-console` until authentication exists.
+
+`GET /api/dashboard` reads four unfiltered lists from the ingestion service in parallel (on virtual
+threads) in `domain/service/DashboardService`: authorities, frameworks, files and requirements.
+`domain/mapper/DashboardMapper` puts them together:
+
+```text
+{ authorities: [ { id, name, jurisdiction, enabled, createdAt, createdBy,
+    frameworks: [ { id, name, shortName, citation, enabled, createdAt, createdBy,
+      files: [ { id, title, sourceUrl, versionLabel, publicationDate, createdAt, createdBy,
+        requirements: [ { id, provisionRef, heading, text, createdAt, createdBy,
+          children: [ requirement ] } ] } ] } ] } ] }
+```
+
+- Requirements are nested under their parent; a file's `requirements` holds its top-level ones.
+- Frameworks, files and requirements whose parent is missing are left out.
+- Lists are sorted: authorities and frameworks by name, files by publication date then title,
+  requirements by `provisionRef`. Empty lists are `[]`.
+
+Requests are validated here (`400` with an `errors` field per property); `4xx` problem details from
+the ingestion service (for example `404` unknown authority or framework, `409` duplicate name or a
+framework that still has files) are returned unchanged; when it fails, cannot be reached or returns
+no `Location`, the response is `502`. Calls to the ingestion service are in
 `boot/client/RegulatoryIngestionServiceClient`.
+
+```bash
+curl -s http://localhost:8082/api/dashboard
+curl -s -i -H 'Content-Type: application/json' \
+  -d '{"authorityId":"<authority id>","name":"Digital Operational Resilience Act","shortName":"DORA","citation":"Regulation (EU) 2022/2554"}' \
+  http://localhost:8082/api/dashboard/frameworks
+curl -s -i -X DELETE http://localhost:8082/api/dashboard/frameworks/<framework id>
+```
 
 ## Test and build
 ```bash
