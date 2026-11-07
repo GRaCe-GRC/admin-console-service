@@ -11,5 +11,6 @@ public record DashboardRequirement(
 		String text,
 		Instant createdAt,
 		String createdBy,
+		List<DashboardMappedControl> mappedControls,
 		List<DashboardRequirement> children) {
 }

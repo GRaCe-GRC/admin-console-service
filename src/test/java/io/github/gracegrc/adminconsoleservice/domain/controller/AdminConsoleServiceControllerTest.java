@@ -7,8 +7,10 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardAuthority;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardCoverage;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardFile;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardFramework;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardMappedControl;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardRequirement;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardResponseDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityRequestDto;
@@ -63,38 +65,43 @@ class AdminConsoleServiceControllerTest {
 		UUID fileId = UUID.fromString("9b2c3d4e-5f60-4b7c-8d9e-1f2a3b4c5d6e");
 		UUID requirementId = UUID.fromString("5d6e7f80-1a2b-4c3d-8e4f-5a6b7c8d9e0f");
 		UUID childId = UUID.fromString("6e7f8091-2b3c-4d4e-9f50-6b7c8d9e0f1a");
+		UUID controlId = UUID.fromString("80910213-4d5e-4f60-b172-8d9e0f1a2b3c");
+		UUID mappingId = UUID.fromString("7f809102-3c4d-4e5f-a061-7c8d9e0f1a2b");
 		Instant createdAt = Instant.parse("2026-10-01T10:15:30Z");
+		DashboardRequirement child = new DashboardRequirement(childId, "Art. 5(1)", null,
+				"Financial entities shall...", createdAt, "admin-console",
+				List.of(new DashboardMappedControl(mappingId, controlId, "Covers it")), List.of());
 		given(dashboardService.retrieveDashboard()).willReturn(new DashboardResponseDto(
 				List.of(new DashboardAuthority(ID, "EBA", "EU", true, createdAt, "admin-console",
 						List.of(new DashboardFramework(FRAMEWORK_ID, "DORA", "DORA", null, true, createdAt,
-								"admin-console",
+								"admin-console", new DashboardCoverage(1, 1),
 								List.of(new DashboardFile(fileId, "DORA text", null, null,
 										LocalDate.parse("2022-12-27"), createdAt, "admin-console",
+										new DashboardCoverage(1, 1),
 										List.of(new DashboardRequirement(requirementId, "Art. 5", "Governance",
-												null, createdAt, "admin-console",
-												List.of(new DashboardRequirement(childId, "Art. 5(1)", null,
-														"Financial entities shall...", createdAt, "admin-console",
-														List.of()))))))))))));
+												null, createdAt, "admin-console", List.of(), List.of(child)))))))))));
 
 		assertThat(mvc.get().uri("/api/dashboard")).hasStatusOk()
 			.bodyJson()
 			.isLenientlyEqualTo("{\"authorities\":[{\"id\":\"" + ID + "\",\"name\":\"EBA\",\"jurisdiction\":\"EU\","
 					+ "\"enabled\":true,\"createdAt\":\"2026-10-01T10:15:30Z\",\"createdBy\":\"admin-console\","
 					+ "\"frameworks\":[{\"id\":\"" + FRAMEWORK_ID + "\",\"name\":\"DORA\",\"shortName\":\"DORA\","
-					+ "\"citation\":null,\"files\":[{\"id\":\"" + fileId + "\",\"title\":\"DORA text\","
-					+ "\"publicationDate\":\"2022-12-27\",\"requirements\":[{\"id\":\"" + requirementId + "\","
-					+ "\"provisionRef\":\"Art. 5\",\"heading\":\"Governance\",\"children\":[{\"id\":\"" + childId + "\","
-					+ "\"provisionRef\":\"Art. 5(1)\",\"text\":\"Financial entities shall...\",\"children\":[]}]}]}]}]}]}");
+					+ "\"citation\":null,\"coverage\":{\"mapped\":1,\"total\":1},\"files\":[{\"id\":\"" + fileId + "\","
+					+ "\"title\":\"DORA text\",\"publicationDate\":\"2022-12-27\",\"coverage\":{\"mapped\":1,\"total\":1},"
+					+ "\"requirements\":[{\"id\":\"" + requirementId + "\",\"provisionRef\":\"Art. 5\",\"heading\":\"Governance\","
+					+ "\"mappedControls\":[],\"children\":[{\"id\":\"" + childId + "\",\"provisionRef\":\"Art. 5(1)\","
+					+ "\"text\":\"Financial entities shall...\",\"mappedControls\":[{\"mappingId\":\"" + mappingId + "\","
+					+ "\"controlId\":\"" + controlId + "\",\"rationale\":\"Covers it\"}],\"children\":[]}]}]}]}]}]}");
 	}
 
 	@Test
 	void getDashboardWhenAnApiIsUnavailableReturnsBadGateway() {
 		given(dashboardService.retrieveDashboard()).willThrow(
-				new CompletionException(new RestClientException("The regulatory ingestion service is unavailable")));
+				new CompletionException(new RestClientException("The control mapping API is unavailable")));
 
 		assertThat(mvc.get().uri("/api/dashboard")).hasStatus(HttpStatus.BAD_GATEWAY)
 			.bodyJson()
-			.isLenientlyEqualTo("{\"status\":502,\"detail\":\"The regulatory ingestion service is unavailable\"}");
+			.isLenientlyEqualTo("{\"status\":502,\"detail\":\"The control mapping API is unavailable\"}");
 	}
 
 	@Test
