@@ -5,6 +5,9 @@ spring:
 regulatory-ingestion-service:
   base-url: ${REGULATORY_INGESTION_SERVICE_URL:http://localhost:8081}
 
+control-api:
+  base-url: ${CONTROL_API_URL:http://localhost:8083}
+
 control-mapping-api:
   base-url: ${CONTROL_MAPPING_API_URL:http://localhost:8084}
 

@@ -4,13 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardAuthority;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardControl;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardControlGroup;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardCoverage;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardFile;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardFramework;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardMappedControl;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardMappedRequirement;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardRequirement;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardResponseDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityResponseDto;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.ControlApiControlGroupResponseDto;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.ControlApiControlResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.ControlMappingApiMappingResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFileResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkResponseDto;
@@ -53,24 +58,35 @@ class DashboardMapperTest {
 
 	private static final RegulatoryIngestionRequirementResponseDto RTS_1 = requirement(DORA_RTS, null, "Art. 1");
 
-	private static final UUID CONTROL_1 = UUID.randomUUID();
+	private static final ControlApiControlGroupResponseDto AC = group(null, "AC");
 
-	private static final UUID CONTROL_2 = UUID.randomUUID();
+	private static final ControlApiControlGroupResponseDto AC_1 = group(AC, "AC.1");
 
-	private static final ControlMappingApiMappingResponseDto ART_5_1_A_TO_CONTROL_1 = mapping(ART_5_1_A.id(), CONTROL_1,
-			"2026-10-02T08:00:00Z");
+	private static final ControlApiControlGroupResponseDto AU = group(null, "AU");
 
-	private static final ControlMappingApiMappingResponseDto ART_5_1_A_TO_CONTROL_2 = mapping(ART_5_1_A.id(), CONTROL_2,
-			"2026-10-01T08:00:00Z");
+	private static final ControlApiControlResponseDto AC_2 = control(AC, null, "AC-2");
 
-	private static final ControlMappingApiMappingResponseDto ART_5_TO_CONTROL_1 = mapping(ART_5.id(), CONTROL_1,
-			"2026-10-01T08:00:00Z");
+	private static final ControlApiControlResponseDto AC_2_1 = control(AC, AC_2, "AC-2(1)");
 
-	private static final ControlMappingApiMappingResponseDto RTS_1_TO_CONTROL_2 = mapping(RTS_1.id(), CONTROL_2,
-			"2026-10-01T08:00:00Z");
+	private static final ControlApiControlResponseDto AC_3 = control(AC_1, null, "AC-3");
 
-	private static final ControlMappingApiMappingResponseDto UNKNOWN_REQUIREMENT_TO_CONTROL_1 = mapping(UUID.randomUUID(),
-			CONTROL_1, "2026-10-01T08:00:00Z");
+	private static final ControlApiControlResponseDto PM_1 = control(null, null, "PM-1");
+
+	private static final ControlApiControlResponseDto PM_1_1 = control(null, PM_1, "PM-1(1)");
+
+	private static final ControlMappingApiMappingResponseDto ART_5_1_A_TO_AC_2 = mapping(ART_5_1_A.id(), AC_2.id());
+
+	private static final ControlMappingApiMappingResponseDto ART_5_1_A_TO_AC_3 = mapping(ART_5_1_A.id(), AC_3.id());
+
+	private static final ControlMappingApiMappingResponseDto ART_5_TO_AC_2 = mapping(ART_5.id(), AC_2.id());
+
+	private static final ControlMappingApiMappingResponseDto RTS_1_TO_AC_2_1 = mapping(RTS_1.id(), AC_2_1.id());
+
+	private static final ControlMappingApiMappingResponseDto UNKNOWN_REQUIREMENT_TO_AC_2 = mapping(UUID.randomUUID(),
+			AC_2.id());
+
+	private static final ControlMappingApiMappingResponseDto ART_6_TO_UNKNOWN_CONTROL = mapping(ART_6.id(),
+			UUID.randomUUID());
 
 	@Test
 	void toResponseDtoNestsRequirementsByTheirParent() {
@@ -83,7 +99,6 @@ class DashboardMapperTest {
 		assertThat(art5.children().getFirst().children()).extracting(DashboardRequirement::provisionRef)
 			.containsExactly("Art. 5(1)(a)", "Art. 5(1)(b)");
 		assertThat(art5.children().getFirst().children()).allSatisfy(leaf -> assertThat(leaf.children()).isEmpty());
-		assertThat(doraText.requirements().get(1).children()).isEmpty();
 	}
 
 	@Test
@@ -95,8 +110,6 @@ class DashboardMapperTest {
 					tuple(DORA_RTS.id(), new DashboardCoverage(1, 1)),
 					tuple(DORA_ANNEX.id(), new DashboardCoverage(0, 0)));
 		assertThat(dora.coverage()).isEqualTo(new DashboardCoverage(2, 4));
-		assertThat(framework(example(), MICA).coverage())
-			.isEqualTo(new DashboardCoverage(0, 0));
 	}
 
 	@Test
@@ -104,35 +117,48 @@ class DashboardMapperTest {
 		DashboardFile doraText = doraFile(example(), DORA_TEXT);
 
 		DashboardRequirement art5 = doraText.requirements().getFirst();
-		assertThat(art5.mappedControls()).containsExactly(
-				new DashboardMappedControl(ART_5_TO_CONTROL_1.id(), CONTROL_1, "Because"));
+		assertThat(art5.mappedControls()).containsExactly(new DashboardMappedControl(ART_5_TO_AC_2.id(),
+				AC_2.id(), "AC-2", "AC-2 title", "Because"));
 		assertThat(art5.children().getFirst().children().getFirst().mappedControls())
 			.extracting(DashboardMappedControl::mappingId)
-			.containsExactly(ART_5_1_A_TO_CONTROL_2.id(), ART_5_1_A_TO_CONTROL_1.id());
+			.containsExactly(ART_5_1_A_TO_AC_2.id(), ART_5_1_A_TO_AC_3.id());
 		assertThat(doraText.requirements().get(1).mappedControls()).isEmpty();
 	}
 
 	@Test
-	void toResponseDtoLeavesOutMappingsOfRequirementsWhoseFileFrameworkOrAuthorityIsMissing() {
-		RegulatoryIngestionFrameworkResponseDto withoutAuthority = framework(BAFIN, "PSD3");
-		RegulatoryIngestionFileResponseDto withoutFramework = file(MICA, "MiCA text", null);
-		RegulatoryIngestionFileResponseDto inFrameworkWithoutAuthority = file(withoutAuthority, "PSD3 text", null);
-		RegulatoryIngestionRequirementResponseDto withoutFile = requirement(DORA_TEXT, null, "Art. 1");
-		RegulatoryIngestionRequirementResponseDto inFileWithoutFramework = requirement(withoutFramework, null, "Art. 2");
-		RegulatoryIngestionRequirementResponseDto inFrameworkWithoutAuthorityRequirement = requirement(
-				inFrameworkWithoutAuthority, null, "Art. 3");
-		DashboardResponseDto dashboard = DashboardMapper.toResponseDto(List.of(EBA), List.of(withoutAuthority, DORA),
-				List.of(withoutFramework, inFrameworkWithoutAuthority, DORA_RTS),
-				List.of(withoutFile, inFileWithoutFramework, inFrameworkWithoutAuthorityRequirement, RTS_1),
-				List.of(mapping(withoutFile.id(), CONTROL_1, "2026-10-01T08:00:00Z"),
-						mapping(inFileWithoutFramework.id(), CONTROL_1, "2026-10-01T08:00:00Z"),
-						mapping(inFrameworkWithoutAuthorityRequirement.id(), CONTROL_1, "2026-10-01T08:00:00Z"),
-						UNKNOWN_REQUIREMENT_TO_CONTROL_1));
+	void toResponseDtoNestsGroupsControlsAndEnhancements() {
+		DashboardResponseDto dashboard = example();
 
-		DashboardFramework dora = framework(dashboard, DORA);
+		assertThat(dashboard.controlGroups()).extracting(DashboardControlGroup::groupRef)
+			.containsExactly("AC", "AU");
+		DashboardControlGroup ac = dashboard.controlGroups().getFirst();
+		assertThat(ac.controls()).extracting(DashboardControl::controlRef).containsExactly("AC-2");
+		assertThat(ac.controls().getFirst().enhancements()).extracting(DashboardControl::controlRef)
+			.containsExactly("AC-2(1)");
+		assertThat(ac.children()).extracting(DashboardControlGroup::groupRef).containsExactly("AC.1");
+		assertThat(ac.children().getFirst().controls()).extracting(DashboardControl::controlRef)
+			.containsExactly("AC-3");
+		assertThat(dashboard.controlGroups().get(1).controls()).isEmpty();
+		assertThat(dashboard.ungroupedControls()).extracting(DashboardControl::controlRef)
+			.containsExactly("PM-1");
+		assertThat(dashboard.ungroupedControls().getFirst().enhancements())
+			.extracting(DashboardControl::controlRef)
+			.containsExactly("PM-1(1)");
+	}
 
-		assertThat(dora.coverage()).isEqualTo(new DashboardCoverage(0, 1));
-		assertThat(dora.files().getFirst().requirements().getFirst().mappedControls()).isEmpty();
+	@Test
+	void toResponseDtoListsTheMappedRequirementsOfEveryControlWithoutOrphans() {
+		DashboardControl ac2 = example().controlGroups().getFirst().controls().getFirst();
+
+		assertThat(ac2.mappedRequirements()).containsExactly(
+				new DashboardMappedRequirement(ART_5_TO_AC_2.id(), ART_5.id(), "Art. 5", "Art. 5 heading",
+						DORA_TEXT.id(), "DORA text", DORA.id(), "DORA", EBA.id(), "EBA", "Because"),
+				new DashboardMappedRequirement(ART_5_1_A_TO_AC_2.id(), ART_5_1_A.id(), "Art. 5(1)(a)",
+						"Art. 5(1)(a) heading", DORA_TEXT.id(), "DORA text", DORA.id(), "DORA", EBA.id(), "EBA",
+						"Because"));
+		assertThat(ac2.enhancements().getFirst().mappedRequirements())
+			.extracting(DashboardMappedRequirement::mappingId)
+			.containsExactly(RTS_1_TO_AC_2_1.id());
 	}
 
 	@Test
@@ -144,9 +170,9 @@ class DashboardMapperTest {
 		DashboardAuthority eba = dashboard.authorities().get(1);
 		assertThat(eba.frameworks()).extracting(DashboardFramework::name).containsExactly("DORA", "MiCA");
 		assertThat(eba.frameworks().get(1).files()).isEmpty();
+		assertThat(eba.frameworks().get(1).coverage()).isEqualTo(new DashboardCoverage(0, 0));
 		assertThat(eba.frameworks().getFirst().files()).extracting(DashboardFile::title)
 			.containsExactly("DORA text", "RTS", "Annex");
-		assertThat(doraFile(dashboard, DORA_ANNEX).requirements()).isEmpty();
 	}
 
 	@Test
@@ -165,6 +191,33 @@ class DashboardMapperTest {
 		assertThat(doraFile(dashboard, DORA_TEXT).requirements().getFirst()).usingRecursiveComparison()
 			.comparingOnlyFields("id", "provisionRef", "heading", "text", "createdAt", "createdBy")
 			.isEqualTo(ART_5);
+		assertThat(dashboard.controlGroups().getFirst()).usingRecursiveComparison()
+			.comparingOnlyFields("id", "groupRef", "title", "createdAt", "createdBy")
+			.isEqualTo(AC);
+		assertThat(dashboard.controlGroups().getFirst().controls().getFirst()).usingRecursiveComparison()
+			.comparingOnlyFields("id", "controlRef", "title", "statement", "createdAt", "createdBy")
+			.isEqualTo(AC_2);
+	}
+
+	@Test
+	void toResponseDtoLeavesOutMappingsOfRequirementsWhoseFileFrameworkOrAuthorityIsMissing() {
+		RegulatoryIngestionFrameworkResponseDto withoutAuthority = framework(BAFIN, "PSD3");
+		RegulatoryIngestionFileResponseDto withoutFramework = file(MICA, "MiCA text", null);
+		RegulatoryIngestionFileResponseDto inFrameworkWithoutAuthority = file(withoutAuthority, "PSD3 text", null);
+		RegulatoryIngestionRequirementResponseDto withoutFile = requirement(DORA_TEXT, null, "Art. 1");
+		RegulatoryIngestionRequirementResponseDto inFileWithoutFramework = requirement(withoutFramework, null, "Art. 2");
+		RegulatoryIngestionRequirementResponseDto inFrameworkWithoutAuthorityRequirement = requirement(
+				inFrameworkWithoutAuthority, null, "Art. 3");
+		DashboardResponseDto dashboard = DashboardMapper.toResponseDto(List.of(EBA), List.of(withoutAuthority),
+				List.of(withoutFramework, inFrameworkWithoutAuthority),
+				List.of(withoutFile, inFileWithoutFramework, inFrameworkWithoutAuthorityRequirement),
+				List.of(mapping(withoutFile.id(), PM_1.id()), mapping(inFileWithoutFramework.id(), PM_1.id()),
+						mapping(inFrameworkWithoutAuthorityRequirement.id(), PM_1.id())),
+				List.of(), List.of(PM_1));
+
+		assertThat(dashboard.authorities()).extracting(DashboardAuthority::frameworks)
+			.containsExactly(List.of());
+		assertThat(dashboard.ungroupedControls().getFirst().mappedRequirements()).isEmpty();
 	}
 
 	@Test
@@ -173,7 +226,7 @@ class DashboardMapperTest {
 		RegulatoryIngestionFileResponseDto withoutFramework = file(MICA, "MiCA text", null);
 		DashboardResponseDto dashboard = DashboardMapper.toResponseDto(List.of(EBA), List.of(withoutAuthority, DORA),
 				List.of(withoutFramework, DORA_RTS), List.of(requirement(withoutFramework, null, "Art. 2"), RTS_1),
-				List.of());
+				List.of(), List.of(), List.of());
 
 		assertThat(dashboard.authorities()).singleElement()
 			.extracting(DashboardAuthority::frameworks)
@@ -184,16 +237,19 @@ class DashboardMapperTest {
 
 	@Test
 	void toResponseDtoWithEmptyUpstreamListsReturnsEmptyArrays() {
-		DashboardResponseDto dashboard = DashboardMapper.toResponseDto(List.of(), List.of(), List.of(), List.of(), List.of());
+		DashboardResponseDto dashboard = DashboardMapper.toResponseDto(List.of(), List.of(), List.of(), List.of(),
+				List.of(), List.of(), List.of());
 
-		assertThat(dashboard).isEqualTo(new DashboardResponseDto(List.of()));
+		assertThat(dashboard)
+			.isEqualTo(new DashboardResponseDto(List.of(), List.of(), List.of()));
 	}
 
 	private static DashboardResponseDto example() {
 		return DashboardMapper.toResponseDto(List.of(EBA, BAFIN), List.of(MICA, DORA),
 				List.of(DORA_ANNEX, DORA_RTS, DORA_TEXT), List.of(ART_6, ART_5_1_B, RTS_1, ART_5_1_A, ART_5_1, ART_5),
-				List.of(UNKNOWN_REQUIREMENT_TO_CONTROL_1, ART_5_1_A_TO_CONTROL_1, RTS_1_TO_CONTROL_2, ART_5_TO_CONTROL_1,
-						ART_5_1_A_TO_CONTROL_2));
+				List.of(UNKNOWN_REQUIREMENT_TO_AC_2, ART_5_1_A_TO_AC_3, ART_6_TO_UNKNOWN_CONTROL, RTS_1_TO_AC_2_1,
+						ART_5_TO_AC_2, ART_5_1_A_TO_AC_2),
+				List.of(AU, AC_1, AC), List.of(PM_1_1, AC_3, PM_1, AC_2_1, AC_2));
 	}
 
 	private static DashboardFramework framework(DashboardResponseDto dashboard,
@@ -239,9 +295,21 @@ class DashboardMapperTest {
 				CREATED_AT, "admin-console");
 	}
 
-	private static ControlMappingApiMappingResponseDto mapping(UUID requirementId, UUID controlId, String createdAt) {
+	private static ControlApiControlGroupResponseDto group(ControlApiControlGroupResponseDto parent, String groupRef) {
+		return new ControlApiControlGroupResponseDto(UUID.randomUUID(), parent == null ? null : parent.id(), groupRef,
+				groupRef + " title", CREATED_AT, "me");
+	}
+
+	private static ControlApiControlResponseDto control(ControlApiControlGroupResponseDto group,
+			ControlApiControlResponseDto parent, String controlRef) {
+		return new ControlApiControlResponseDto(UUID.randomUUID(), group == null ? null : group.id(),
+				parent == null ? null : parent.id(), controlRef, controlRef + " title", controlRef + " statement",
+				CREATED_AT, "me");
+	}
+
+	private static ControlMappingApiMappingResponseDto mapping(UUID requirementId, UUID controlId) {
 		return new ControlMappingApiMappingResponseDto(UUID.randomUUID(), requirementId, controlId, "Because",
-				Instant.parse(createdAt), "me");
+				CREATED_AT, "me");
 	}
 
 }
