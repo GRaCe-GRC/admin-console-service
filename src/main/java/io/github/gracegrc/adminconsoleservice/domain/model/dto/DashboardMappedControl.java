@@ -5,5 +5,7 @@ import java.util.UUID;
 public record DashboardMappedControl(
 		UUID mappingId,
 		UUID controlId,
+		String controlRef,
+		String title,
 		String rationale) {
 }

@@ -5,11 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 
 import io.github.gracegrc.adminconsoleservice.domain.mapper.DashboardMapper;
-import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardAuthority;
-import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardCoverage;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardControl;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardControlGroup;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardResponseDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityResponseDto;
+import io.github.gracegrc.adminconsoleservice.service.control.ControlApiService;
 import io.github.gracegrc.adminconsoleservice.service.control.ControlMappingApiService;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.ControlApiControlGroupResponseDto;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.ControlApiControlResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.ControlMappingApiMappingResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFileResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkResponseDto;
@@ -68,27 +71,41 @@ class DashboardServiceImplTest {
 
 	private static final RegulatoryIngestionRequirementResponseDto RTS_1 = requirement(DORA_RTS, null, "Art. 1");
 
-	private static final UUID CONTROL_1 = UUID.randomUUID();
+	private static final ControlApiControlGroupResponseDto AC = group(null, "AC");
 
-	private static final UUID CONTROL_2 = UUID.randomUUID();
+	private static final ControlApiControlGroupResponseDto AC_1 = group(AC, "AC.1");
 
-	private static final ControlMappingApiMappingResponseDto ART_5_1_A_TO_CONTROL_1 = mapping(ART_5_1_A.id(), CONTROL_1,
-			"2026-10-02T08:00:00Z");
+	private static final ControlApiControlGroupResponseDto AU = group(null, "AU");
 
-	private static final ControlMappingApiMappingResponseDto ART_5_1_A_TO_CONTROL_2 = mapping(ART_5_1_A.id(), CONTROL_2,
-			"2026-10-01T08:00:00Z");
+	private static final ControlApiControlResponseDto AC_2 = control(AC, null, "AC-2");
 
-	private static final ControlMappingApiMappingResponseDto ART_5_TO_CONTROL_1 = mapping(ART_5.id(), CONTROL_1,
-			"2026-10-01T08:00:00Z");
+	private static final ControlApiControlResponseDto AC_2_1 = control(AC, AC_2, "AC-2(1)");
 
-	private static final ControlMappingApiMappingResponseDto RTS_1_TO_CONTROL_2 = mapping(RTS_1.id(), CONTROL_2,
-			"2026-10-01T08:00:00Z");
+	private static final ControlApiControlResponseDto AC_3 = control(AC_1, null, "AC-3");
 
-	private static final ControlMappingApiMappingResponseDto UNKNOWN_REQUIREMENT_TO_CONTROL_1 = mapping(UUID.randomUUID(),
-			CONTROL_1, "2026-10-01T08:00:00Z");
+	private static final ControlApiControlResponseDto PM_1 = control(null, null, "PM-1");
+
+	private static final ControlApiControlResponseDto PM_1_1 = control(null, PM_1, "PM-1(1)");
+
+	private static final ControlMappingApiMappingResponseDto ART_5_1_A_TO_AC_2 = mapping(ART_5_1_A.id(), AC_2.id());
+
+	private static final ControlMappingApiMappingResponseDto ART_5_1_A_TO_AC_3 = mapping(ART_5_1_A.id(), AC_3.id());
+
+	private static final ControlMappingApiMappingResponseDto ART_5_TO_AC_2 = mapping(ART_5.id(), AC_2.id());
+
+	private static final ControlMappingApiMappingResponseDto RTS_1_TO_AC_2_1 = mapping(RTS_1.id(), AC_2_1.id());
+
+	private static final ControlMappingApiMappingResponseDto UNKNOWN_REQUIREMENT_TO_AC_2 = mapping(UUID.randomUUID(),
+			AC_2.id());
+
+	private static final ControlMappingApiMappingResponseDto ART_6_TO_UNKNOWN_CONTROL = mapping(ART_6.id(),
+			UUID.randomUUID());
 
 	@Mock
 	private RegulatoryIngestionService regulatoryIngestionService;
+
+	@Mock
+	private ControlApiService controlApiService;
 
 	@Mock
 	private ControlMappingApiService controlMappingApiService;
@@ -100,8 +117,8 @@ class DashboardServiceImplTest {
 	@BeforeEach
 	void createService() {
 		executor = Executors.newVirtualThreadPerTaskExecutor();
-		dashboardService = new DashboardServiceImpl(regulatoryIngestionService, controlMappingApiService,
-				executor);
+		dashboardService = new DashboardServiceImpl(regulatoryIngestionService, controlApiService,
+				controlMappingApiService, executor);
 	}
 
 	@AfterEach
@@ -110,17 +127,19 @@ class DashboardServiceImplTest {
 	}
 
 	@Test
-	void retrieveDashboardIssuesEveryCallThroughTheExecutor() {
+	void retrieveDashboardIssuesEverySevenCallsThroughTheExecutor() {
 		Set<Thread> threads = ConcurrentHashMap.newKeySet();
 		given(regulatoryIngestionService.findAllAuthorities()).willAnswer(invocation -> record(threads));
 		given(regulatoryIngestionService.findAllFrameworks()).willAnswer(invocation -> record(threads));
 		given(regulatoryIngestionService.findAllFiles()).willAnswer(invocation -> record(threads));
 		given(regulatoryIngestionService.findAllRequirements()).willAnswer(invocation -> record(threads));
+		given(controlApiService.findAllControlGroups()).willAnswer(invocation -> record(threads));
+		given(controlApiService.findAllControls()).willAnswer(invocation -> record(threads));
 		given(controlMappingApiService.findAllMappings()).willAnswer(invocation -> record(threads));
 
 		dashboardService.retrieveDashboard();
 
-		assertThat(threads).hasSize(5).allSatisfy(thread -> assertThat(thread.isVirtual()).isTrue())
+		assertThat(threads).hasSize(7).allSatisfy(thread -> assertThat(thread.isVirtual()).isTrue())
 			.doesNotContain(Thread.currentThread());
 	}
 
@@ -128,7 +147,7 @@ class DashboardServiceImplTest {
 	void retrieveDashboardThrowsAClientErrorAsTheCauseOfTheCompletionException() {
 		HttpClientErrorException notFound = HttpClientErrorException.create(HttpStatus.NOT_FOUND, "Not Found", null,
 				new byte[0], StandardCharsets.UTF_8);
-		given(regulatoryIngestionService.findAllFiles()).willThrow(notFound);
+		given(controlApiService.findAllControls()).willThrow(notFound);
 
 		assertThatThrownBy(() -> dashboardService.retrieveDashboard()).isInstanceOf(CompletionException.class)
 			.cause()
@@ -136,17 +155,7 @@ class DashboardServiceImplTest {
 	}
 
 	@Test
-	void retrieveDashboardThrowsAnUnavailableServiceAsTheCauseOfTheCompletionException() {
-		RestClientException unavailable = new RestClientException("The regulatory ingestion service is unavailable");
-		given(regulatoryIngestionService.findAllRequirements()).willThrow(unavailable);
-
-		assertThatThrownBy(() -> dashboardService.retrieveDashboard()).isInstanceOf(CompletionException.class)
-			.cause()
-			.isSameAs(unavailable);
-	}
-
-	@Test
-	void retrieveDashboardThrowsAnUnavailableControlMappingApiAsTheCauseOfTheCompletionException() {
+	void retrieveDashboardThrowsAnUnavailableApiAsTheCauseOfTheCompletionException() {
 		RestClientException unavailable = new RestClientException("The control mapping API is unavailable");
 		given(controlMappingApiService.findAllMappings()).willThrow(unavailable);
 
@@ -163,36 +172,41 @@ class DashboardServiceImplTest {
 
 		assertThat(dashboard).isEqualTo(DashboardMapper.toResponseDto(List.of(EBA, BAFIN), List.of(MICA, DORA),
 				List.of(DORA_ANNEX, DORA_RTS, DORA_TEXT), List.of(ART_6, ART_5_1_B, RTS_1, ART_5_1_A, ART_5_1, ART_5),
-				List.of(UNKNOWN_REQUIREMENT_TO_CONTROL_1, ART_5_1_A_TO_CONTROL_1, RTS_1_TO_CONTROL_2, ART_5_TO_CONTROL_1,
-						ART_5_1_A_TO_CONTROL_2)));
-		assertThat(dashboard.authorities()).extracting(DashboardAuthority::name).containsExactly("BaFin", "EBA");
-		assertThat(dashboard.authorities().get(1).frameworks().getFirst().coverage())
-			.isEqualTo(new DashboardCoverage(2, 4));
+				List.of(UNKNOWN_REQUIREMENT_TO_AC_2, ART_5_1_A_TO_AC_3, ART_6_TO_UNKNOWN_CONTROL, RTS_1_TO_AC_2_1,
+						ART_5_TO_AC_2, ART_5_1_A_TO_AC_2),
+				List.of(AU, AC_1, AC), List.of(PM_1_1, AC_3, PM_1, AC_2_1, AC_2)));
+		assertThat(dashboard.controlGroups()).extracting(DashboardControlGroup::groupRef).containsExactly("AC", "AU");
+		assertThat(dashboard.ungroupedControls()).extracting(DashboardControl::controlRef).containsExactly("PM-1");
 	}
 
 	@Test
 	void retrieveDashboardTreatsANullUpstreamListAsEmpty() {
-		givenUpstream(List.of(EBA), List.of(DORA), List.of(DORA_TEXT), List.of(ART_5), null);
+		givenUpstream(List.of(), List.of(), List.of(), List.of(), List.of(), null, List.of(PM_1));
 
-		assertThat(dashboardService.retrieveDashboard().authorities().getFirst().frameworks().getFirst().coverage())
-			.isEqualTo(new DashboardCoverage(0, 1));
+		assertThat(dashboardService.retrieveDashboard().ungroupedControls())
+			.extracting(DashboardControl::controlRef)
+			.containsExactly("PM-1");
 	}
 
 	private void givenTheExample() {
 		givenUpstream(List.of(EBA, BAFIN), List.of(MICA, DORA), List.of(DORA_ANNEX, DORA_RTS, DORA_TEXT),
 				List.of(ART_6, ART_5_1_B, RTS_1, ART_5_1_A, ART_5_1, ART_5),
-				List.of(UNKNOWN_REQUIREMENT_TO_CONTROL_1, ART_5_1_A_TO_CONTROL_1, RTS_1_TO_CONTROL_2, ART_5_TO_CONTROL_1,
-						ART_5_1_A_TO_CONTROL_2));
+				List.of(UNKNOWN_REQUIREMENT_TO_AC_2, ART_5_1_A_TO_AC_3, ART_6_TO_UNKNOWN_CONTROL, RTS_1_TO_AC_2_1,
+						ART_5_TO_AC_2, ART_5_1_A_TO_AC_2),
+				List.of(AU, AC_1, AC), List.of(PM_1_1, AC_3, PM_1, AC_2_1, AC_2));
 	}
 
 	private void givenUpstream(List<RegulatoryAuthorityResponseDto> authorities,
 			List<RegulatoryIngestionFrameworkResponseDto> frameworks, List<RegulatoryIngestionFileResponseDto> files,
 			List<RegulatoryIngestionRequirementResponseDto> requirements,
-			List<ControlMappingApiMappingResponseDto> mappings) {
+			List<ControlMappingApiMappingResponseDto> mappings, List<ControlApiControlGroupResponseDto> groups,
+			List<ControlApiControlResponseDto> controls) {
 		given(regulatoryIngestionService.findAllAuthorities()).willReturn(authorities);
 		given(regulatoryIngestionService.findAllFrameworks()).willReturn(frameworks);
 		given(regulatoryIngestionService.findAllFiles()).willReturn(files);
 		given(regulatoryIngestionService.findAllRequirements()).willReturn(requirements);
+		given(controlApiService.findAllControlGroups()).willReturn(groups);
+		given(controlApiService.findAllControls()).willReturn(controls);
 		given(controlMappingApiService.findAllMappings()).willReturn(mappings);
 	}
 
@@ -225,9 +239,21 @@ class DashboardServiceImplTest {
 				CREATED_AT, "admin-console");
 	}
 
-	private static ControlMappingApiMappingResponseDto mapping(UUID requirementId, UUID controlId, String createdAt) {
+	private static ControlApiControlGroupResponseDto group(ControlApiControlGroupResponseDto parent, String groupRef) {
+		return new ControlApiControlGroupResponseDto(UUID.randomUUID(), parent == null ? null : parent.id(), groupRef,
+				groupRef + " title", CREATED_AT, "me");
+	}
+
+	private static ControlApiControlResponseDto control(ControlApiControlGroupResponseDto group,
+			ControlApiControlResponseDto parent, String controlRef) {
+		return new ControlApiControlResponseDto(UUID.randomUUID(), group == null ? null : group.id(),
+				parent == null ? null : parent.id(), controlRef, controlRef + " title", controlRef + " statement",
+				CREATED_AT, "me");
+	}
+
+	private static ControlMappingApiMappingResponseDto mapping(UUID requirementId, UUID controlId) {
 		return new ControlMappingApiMappingResponseDto(UUID.randomUUID(), requirementId, controlId, "Because",
-				Instant.parse(createdAt), "me");
+				CREATED_AT, "me");
 	}
 
 }
