@@ -3,6 +3,8 @@ package io.github.gracegrc.adminconsoleservice.domain.service;
 import io.github.gracegrc.adminconsoleservice.domain.mapper.DashboardMapper;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardResponseDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityResponseDto;
+import io.github.gracegrc.adminconsoleservice.service.control.ControlMappingApiService;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.ControlMappingApiMappingResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFileResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionRequirementResponseDto;
@@ -19,10 +21,14 @@ public class DashboardServiceImpl implements DashboardService {
 
 	private final RegulatoryIngestionService regulatoryIngestionService;
 
+	private final ControlMappingApiService controlMappingApiService;
+
 	private final Executor dashboardExecutor;
 
-	public DashboardServiceImpl(RegulatoryIngestionService regulatoryIngestionService, Executor dashboardExecutor) {
+	public DashboardServiceImpl(RegulatoryIngestionService regulatoryIngestionService,
+			ControlMappingApiService controlMappingApiService, Executor dashboardExecutor) {
 		this.regulatoryIngestionService = regulatoryIngestionService;
+		this.controlMappingApiService = controlMappingApiService;
 		this.dashboardExecutor = dashboardExecutor;
 	}
 
@@ -35,8 +41,10 @@ public class DashboardServiceImpl implements DashboardService {
 		CompletableFuture<List<RegulatoryIngestionFileResponseDto>> files = fetch(regulatoryIngestionService::findAllFiles);
 		CompletableFuture<List<RegulatoryIngestionRequirementResponseDto>> requirements = fetch(
 				regulatoryIngestionService::findAllRequirements);
+		CompletableFuture<List<ControlMappingApiMappingResponseDto>> mappings = fetch(
+				controlMappingApiService::findAllMappings);
 		return DashboardMapper.toResponseDto(authorities.join(), frameworks.join(), files.join(),
-				requirements.join());
+				requirements.join(), mappings.join());
 	}
 
 	private <T> CompletableFuture<List<T>> fetch(Supplier<List<T>> call) {

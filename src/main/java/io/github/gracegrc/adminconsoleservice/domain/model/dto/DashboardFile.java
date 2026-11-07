@@ -13,5 +13,6 @@ public record DashboardFile(
 		LocalDate publicationDate,
 		Instant createdAt,
 		String createdBy,
+		DashboardCoverage coverage,
 		List<DashboardRequirement> requirements) {
 }

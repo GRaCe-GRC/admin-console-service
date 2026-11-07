@@ -12,5 +12,6 @@ public record DashboardFramework(
 		boolean enabled,
 		Instant createdAt,
 		String createdBy,
+		DashboardCoverage coverage,
 		List<DashboardFile> files) {
 }

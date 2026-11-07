@@ -3,15 +3,16 @@
 Shared backend for the GRaCe-GRC admin console: review workflows and configuration for all projects.
 
 > **Status:** backs the dashboard of the admin console, through the
-> [regulatory ingestion service](https://github.com/GRaCe-GRC/regulatory-ingestion-service).
+> [regulatory ingestion service](https://github.com/GRaCe-GRC/regulatory-ingestion-service) and the
+> [Control Mapping API](https://github.com/GRaCe-GRC/control-mapping-api).
 
 ## Stack
 - Java (latest LTS at setup), Spring Boot (latest stable at setup)
 - Maven, via the Maven wrapper (`./mvnw`)
 
 ## Getting started
-The service calls the regulatory ingestion service (which calls the Regulatory API). To run them
-on one machine, start those first (see their READMEs), then this
+The service calls the regulatory ingestion service (which calls the Regulatory API) and the
+Control Mapping API. To run them on one machine, start those first (see their READMEs), then this
 service on another port:
 
 ```bash
@@ -21,6 +22,7 @@ SERVER_PORT=8082 ./mvnw spring-boot:run
 | Environment variable | Default | Description |
 |---|---|---|
 | `REGULATORY_INGESTION_SERVICE_URL` | `http://localhost:8081` | Base URL of the regulatory ingestion service |
+| `CONTROL_MAPPING_API_URL` | `http://localhost:8084` | Base URL of the Control Mapping API |
 
 | Endpoint | Description |
 |---|---|
@@ -42,28 +44,34 @@ Endpoints are shaped around the admin console screens, not the domain.
 
 New authorities and frameworks get `createdBy = admin-console` until authentication exists.
 
-`GET /api/dashboard` reads four unfiltered lists from the ingestion service in parallel (on virtual
-threads) in `domain/service/DashboardService`: authorities, frameworks, files and requirements.
-`domain/mapper/DashboardMapper` puts them together:
+`GET /api/dashboard` reads five unfiltered lists in parallel (on virtual threads): authorities,
+frameworks, files and requirements from the ingestion service, and control mappings from the Control
+Mapping API, in `domain/service/DashboardService`. `domain/mapper/DashboardMapper` puts them
+together:
 
 ```text
 { authorities: [ { id, name, jurisdiction, enabled, createdAt, createdBy,
-    frameworks: [ { id, name, shortName, citation, enabled, createdAt, createdBy,
-      files: [ { id, title, sourceUrl, versionLabel, publicationDate, createdAt, createdBy,
+    frameworks: [ { id, name, shortName, citation, enabled, createdAt, createdBy, coverage,
+      files: [ { id, title, sourceUrl, versionLabel, publicationDate, createdAt, createdBy, coverage,
         requirements: [ { id, provisionRef, heading, text, createdAt, createdBy,
+          mappedControls: [ { mappingId, controlId, rationale } ],
           children: [ requirement ] } ] } ] } ] } ] }
 ```
 
 - Requirements are nested under their parent; a file's `requirements` holds its top-level ones.
-- Frameworks, files and requirements whose parent is missing are left out.
+- `coverage` is `{mapped, total}`: `total` counts the lowest-level provisions of the file
+  (requirements that are no other requirement's parent) and `mapped` how many of them have at least
+  one mapping. A framework's coverage adds up its files; an empty file or framework has `{0, 0}`.
+- Frameworks, files and requirements whose parent is missing are left out. A mapping is shown only
+  under its requirement, so mappings whose requirement no longer exists are left out.
 - Lists are sorted: authorities and frameworks by name, files by publication date then title,
-  requirements by `provisionRef`. Empty lists are `[]`.
+  requirements by `provisionRef`, `mappedControls` by mapping date. Empty lists are `[]`.
 
 Requests are validated here (`400` with an `errors` field per property); `4xx` problem details from
-the ingestion service (for example `404` unknown authority or framework, `409` duplicate name or a
-framework that still has files) are returned unchanged; when it fails, cannot be reached or returns
-no `Location`, the response is `502`. Calls to the ingestion service are in
-`boot/client/RegulatoryIngestionServiceClient`.
+the called services (for example `404` unknown authority or framework, `409` duplicate name or a
+framework that still has files) are returned unchanged; when one of them fails, cannot be reached
+or the ingestion service returns no `Location`, the response is `502`. The HTTP calls are in
+`boot/client` (`RegulatoryIngestionServiceClient`, `ControlMappingApiClient`).
 
 ```bash
 curl -s http://localhost:8082/api/dashboard

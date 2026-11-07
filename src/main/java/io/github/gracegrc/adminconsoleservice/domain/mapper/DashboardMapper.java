@@ -1,11 +1,14 @@
 package io.github.gracegrc.adminconsoleservice.domain.mapper;
 
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardAuthority;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardCoverage;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardFile;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardFramework;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardMappedControl;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardRequirement;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardResponseDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityResponseDto;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.ControlMappingApiMappingResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFileResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionRequirementResponseDto;
@@ -37,17 +40,29 @@ public final class DashboardMapper {
 		.comparing(RegulatoryIngestionRequirementResponseDto::provisionRef)
 		.thenComparing(RegulatoryIngestionRequirementResponseDto::id);
 
+	private static final Comparator<ControlMappingApiMappingResponseDto> MAPPING_ORDER = Comparator
+		.comparing(ControlMappingApiMappingResponseDto::createdAt, Comparator.nullsLast(Comparator.naturalOrder()))
+		.thenComparing(ControlMappingApiMappingResponseDto::id);
+
 	private DashboardMapper() {
 	}
 
 	public static DashboardResponseDto toResponseDto(List<RegulatoryAuthorityResponseDto> authorities,
 			List<RegulatoryIngestionFrameworkResponseDto> frameworks, List<RegulatoryIngestionFileResponseDto> files,
-			List<RegulatoryIngestionRequirementResponseDto> requirements) {
-		Map<UUID, List<DashboardRequirement>> requirementTreesByFile = requirementTreesByFile(requirements);
+			List<RegulatoryIngestionRequirementResponseDto> requirements,
+			List<ControlMappingApiMappingResponseDto> mappings) {
+		Map<UUID, List<DashboardMappedControl>> mappedControlsByRequirement = mapValues(
+				groupedBy(mappings.stream().filter(mapping -> mapping.requirementId() != null),
+						ControlMappingApiMappingResponseDto::requirementId, MAPPING_ORDER),
+				mapping -> new DashboardMappedControl(mapping.id(), mapping.controlId(), mapping.rationale()));
+		Map<UUID, List<DashboardRequirement>> requirementTreesByFile = requirementTreesByFile(requirements,
+				mappedControlsByRequirement);
+		Map<UUID, DashboardCoverage> coverageByFile = coverageByFile(requirements,
+				mappedControlsByRequirement.keySet());
 		Map<UUID, List<DashboardFile>> filesByFramework = mapValues(
 				groupedBy(files.stream().filter(file -> file.frameworkId() != null),
 						RegulatoryIngestionFileResponseDto::frameworkId, FILE_ORDER),
-				file -> toFile(file, requirementTreesByFile));
+				file -> toFile(file, requirementTreesByFile, coverageByFile));
 		Map<UUID, List<DashboardFramework>> frameworksByAuthority = mapValues(
 				groupedBy(frameworks.stream().filter(framework -> framework.authorityId() != null),
 						RegulatoryIngestionFrameworkResponseDto::authorityId, FRAMEWORK_ORDER),
@@ -59,7 +74,8 @@ public final class DashboardMapper {
 	}
 
 	private static Map<UUID, List<DashboardRequirement>> requirementTreesByFile(
-			List<RegulatoryIngestionRequirementResponseDto> requirements) {
+			List<RegulatoryIngestionRequirementResponseDto> requirements,
+			Map<UUID, List<DashboardMappedControl>> mappedControlsByRequirement) {
 		Set<UUID> requirementIds = requirements.stream()
 			.map(RegulatoryIngestionRequirementResponseDto::id)
 			.collect(Collectors.toSet());
@@ -71,7 +87,25 @@ public final class DashboardMapper {
 					.filter(requirement -> requirement.fileId() != null
 							&& !requirementIds.contains(requirement.parentRequirementId())),
 				RegulatoryIngestionRequirementResponseDto::fileId, REQUIREMENT_ORDER),
-				requirement -> toRequirement(requirement, requirementsByParent));
+				requirement -> toRequirement(requirement, requirementsByParent, mappedControlsByRequirement));
+	}
+
+	private static Map<UUID, DashboardCoverage> coverageByFile(
+			List<RegulatoryIngestionRequirementResponseDto> requirements, Set<UUID> mappedRequirementIds) {
+		Set<UUID> requirementIds = requirements.stream()
+			.map(RegulatoryIngestionRequirementResponseDto::id)
+			.collect(Collectors.toSet());
+		Set<UUID> parentIds = requirements.stream()
+			.map(RegulatoryIngestionRequirementResponseDto::parentRequirementId)
+			.filter(requirementIds::contains)
+			.collect(Collectors.toSet());
+		return requirements.stream()
+			.filter(requirement -> requirement.fileId() != null && !parentIds.contains(requirement.id()))
+			.collect(Collectors.groupingBy(RegulatoryIngestionRequirementResponseDto::fileId,
+					Collectors.collectingAndThen(Collectors.toList(),
+							leaves -> new DashboardCoverage(
+									(int) leaves.stream().filter(leaf -> mappedRequirementIds.contains(leaf.id())).count(),
+									leaves.size()))));
 	}
 
 	private static DashboardAuthority toAuthority(RegulatoryAuthorityResponseDto authority,
@@ -82,23 +116,29 @@ public final class DashboardMapper {
 
 	private static DashboardFramework toFramework(RegulatoryIngestionFrameworkResponseDto framework,
 			Map<UUID, List<DashboardFile>> filesByFramework) {
+		List<DashboardFile> files = children(filesByFramework, framework.id());
+		DashboardCoverage coverage = new DashboardCoverage(
+				files.stream().mapToInt(file -> file.coverage().mapped()).sum(),
+				files.stream().mapToInt(file -> file.coverage().total()).sum());
 		return new DashboardFramework(framework.id(), framework.name(), framework.shortName(), framework.citation(),
-				framework.enabled(), framework.createdAt(), framework.createdBy(),
-				children(filesByFramework, framework.id()));
+				framework.enabled(), framework.createdAt(), framework.createdBy(), coverage, files);
 	}
 
 	private static DashboardFile toFile(RegulatoryIngestionFileResponseDto file,
-			Map<UUID, List<DashboardRequirement>> requirementTreesByFile) {
+			Map<UUID, List<DashboardRequirement>> requirementTreesByFile, Map<UUID, DashboardCoverage> coverageByFile) {
 		return new DashboardFile(file.id(), file.title(), file.sourceUrl(), file.versionLabel(), file.publicationDate(),
-				file.createdAt(), file.createdBy(), children(requirementTreesByFile, file.id()));
+				file.createdAt(), file.createdBy(), coverageByFile.getOrDefault(file.id(), new DashboardCoverage(0, 0)),
+				children(requirementTreesByFile, file.id()));
 	}
 
 	private static DashboardRequirement toRequirement(RegulatoryIngestionRequirementResponseDto requirement,
-			Map<UUID, List<RegulatoryIngestionRequirementResponseDto>> requirementsByParent) {
+			Map<UUID, List<RegulatoryIngestionRequirementResponseDto>> requirementsByParent,
+			Map<UUID, List<DashboardMappedControl>> mappedControlsByRequirement) {
 		return new DashboardRequirement(requirement.id(), requirement.provisionRef(), requirement.heading(),
 				requirement.text(), requirement.createdAt(), requirement.createdBy(),
+				children(mappedControlsByRequirement, requirement.id()),
 				children(requirementsByParent, requirement.id()).stream()
-					.map(child -> toRequirement(child, requirementsByParent))
+					.map(child -> toRequirement(child, requirementsByParent, mappedControlsByRequirement))
 					.toList());
 	}
 
