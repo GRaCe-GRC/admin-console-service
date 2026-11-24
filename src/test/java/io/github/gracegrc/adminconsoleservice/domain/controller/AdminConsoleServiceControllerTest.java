@@ -6,9 +6,11 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlMappingRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlMappingUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardAuthority;
-import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardControlGroup;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardControl;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardControlGroup;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardCoverage;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardFile;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardFramework;
@@ -23,6 +25,7 @@ import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileUpd
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.service.DashboardService;
+import io.github.gracegrc.adminconsoleservice.service.control.ControlMappingApiService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryApiService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryIngestionService;
 import java.nio.charset.StandardCharsets;
@@ -84,6 +87,18 @@ class AdminConsoleServiceControllerTest {
 	private static final RegulatoryFileUpdateRequestDto FILE_UPDATE_REQUEST = new RegulatoryFileUpdateRequestDto("DORA",
 			"https://example.org/dora", "OJ L 333", LocalDate.parse("2022-12-27"));
 
+	private static final UUID REQUIREMENT_ID = UUID.fromString("5d6e7f80-1a2b-4c3d-8e4f-5a6b7c8d9e0f");
+
+	private static final UUID CONTROL_ID = UUID.fromString("80910213-4d5e-4f60-b172-8d9e0f1a2b3c");
+
+	private static final UUID MAPPING_ID = UUID.fromString("7f809102-3c4d-4e5f-a061-7c8d9e0f1a2b");
+
+	private static final String MAPPING_BODY = "{\"requirementId\":\"" + REQUIREMENT_ID + "\",\"controlId\":\""
+			+ CONTROL_ID + "\",\"rationale\":\"Covers it\"}";
+
+	private static final ControlMappingRequestDto MAPPING_REQUEST = new ControlMappingRequestDto(REQUIREMENT_ID,
+			CONTROL_ID, "Covers it");
+
 	@Autowired
 	private MockMvcTester mvc;
 
@@ -95,6 +110,9 @@ class AdminConsoleServiceControllerTest {
 
 	@MockitoBean
 	private DashboardService dashboardService;
+
+	@MockitoBean
+	private ControlMappingApiService controlMappingApiService;
 
 	@Test
 	void getDashboardReturnsTheWholeDashboard() {
@@ -721,6 +739,156 @@ class AdminConsoleServiceControllerTest {
 	void deleteFileWithAMalformedIdReturnsBadRequest() {
 		assertThat(mvc.delete().uri("/api/dashboard/files/not-a-uuid")).hasStatus(HttpStatus.BAD_REQUEST);
 		then(regulatoryIngestionService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void postMappingCreatesItAndReturnsItsLocation() {
+		given(controlMappingApiService.createMapping(MAPPING_REQUEST)).willReturn(MAPPING_ID);
+
+		assertThat(mvc.post().uri("/api/dashboard/mappings").contentType(MediaType.APPLICATION_JSON).content(MAPPING_BODY))
+			.hasStatus(HttpStatus.CREATED)
+			.hasHeader("Location", "http://localhost/api/dashboard/mappings/" + MAPPING_ID)
+			.body()
+			.isEmpty();
+	}
+
+	@Test
+	void postMappingWithoutARationaleCreatesIt() {
+		given(controlMappingApiService.createMapping(new ControlMappingRequestDto(REQUIREMENT_ID, CONTROL_ID, null)))
+			.willReturn(MAPPING_ID);
+
+		assertThat(mvc.post()
+			.uri("/api/dashboard/mappings")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"requirementId\":\"" + REQUIREMENT_ID + "\",\"controlId\":\"" + CONTROL_ID + "\"}"))
+			.hasStatus(HttpStatus.CREATED)
+			.hasHeader("Location", "http://localhost/api/dashboard/mappings/" + MAPPING_ID);
+	}
+
+	@Test
+	void postMappingWithMissingIdsReturnsBadRequestWithTheErrors() {
+		assertThat(mvc.post().uri("/api/dashboard/mappings").contentType(MediaType.APPLICATION_JSON).content("{}"))
+			.hasStatus(HttpStatus.BAD_REQUEST)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":400,\"errors\":{\"requirementId\":\"must not be null\","
+					+ "\"controlId\":\"must not be null\"}}");
+		then(controlMappingApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void postMappingWithAMalformedIdReturnsBadRequest() {
+		assertThat(mvc.post()
+			.uri("/api/dashboard/mappings")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"requirementId\":\"not-a-uuid\",\"controlId\":\"" + CONTROL_ID + "\"}"))
+			.hasStatus(HttpStatus.BAD_REQUEST);
+		then(controlMappingApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void postMappingForAnExistingPairReturnsTheConflictUnchanged() {
+		String problem = "{\"title\":\"Conflict\",\"status\":409,\"detail\":\"Requirement " + REQUIREMENT_ID
+				+ " is already mapped to control " + CONTROL_ID + "\"}";
+		given(controlMappingApiService.createMapping(MAPPING_REQUEST)).willThrow(conflict(problem));
+
+		assertThat(mvc.post().uri("/api/dashboard/mappings").contentType(MediaType.APPLICATION_JSON).content(MAPPING_BODY))
+			.hasStatus(HttpStatus.CONFLICT)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void postMappingWhenTheControlMappingApiFailsReturnsBadGateway() {
+		given(controlMappingApiService.createMapping(MAPPING_REQUEST))
+			.willThrow(new RestClientException("The control mapping API returned 500"));
+
+		assertThat(mvc.post().uri("/api/dashboard/mappings").contentType(MediaType.APPLICATION_JSON).content(MAPPING_BODY))
+			.hasStatus(HttpStatus.BAD_GATEWAY)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":502,\"detail\":\"The control mapping API returned 500\"}");
+	}
+
+	@Test
+	void putMappingUpdatesTheRationaleAndReturnsNoContent() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/mappings/{id}", MAPPING_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"rationale\":\"Now covers it\"}"))
+			.hasStatus(HttpStatus.NO_CONTENT)
+			.body()
+			.isEmpty();
+		then(controlMappingApiService).should()
+			.updateMapping(MAPPING_ID, new ControlMappingUpdateRequestDto("Now covers it"));
+	}
+
+	@Test
+	void putMappingWithoutABodyReturnsBadRequest() {
+		assertThat(mvc.put().uri("/api/dashboard/mappings/{id}", MAPPING_ID).contentType(MediaType.APPLICATION_JSON))
+			.hasStatus(HttpStatus.BAD_REQUEST);
+		then(controlMappingApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void putMappingWithAnUnknownIdReturnsTheNotFoundUnchanged() {
+		String problem = "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"Control mapping " + MAPPING_ID
+				+ " not found\"}";
+		willThrow(notFound(problem)).given(controlMappingApiService)
+			.updateMapping(MAPPING_ID, new ControlMappingUpdateRequestDto(null));
+
+		assertThat(mvc.put()
+			.uri("/api/dashboard/mappings/{id}", MAPPING_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{}"))
+			.hasStatus(HttpStatus.NOT_FOUND)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void putMappingWithAMalformedIdReturnsBadRequest() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/mappings/not-a-uuid")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"rationale\":\"Now covers it\"}"))
+			.hasStatus(HttpStatus.BAD_REQUEST);
+		then(controlMappingApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void deleteMappingReturnsNoContent() {
+		assertThat(mvc.delete().uri("/api/dashboard/mappings/{id}", MAPPING_ID)).hasStatus(HttpStatus.NO_CONTENT)
+			.body()
+			.isEmpty();
+		then(controlMappingApiService).should().deleteMapping(MAPPING_ID);
+	}
+
+	@Test
+	void deleteMappingWithAnUnknownIdReturnsTheNotFoundUnchanged() {
+		String problem = "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"Control mapping " + MAPPING_ID
+				+ " not found\"}";
+		willThrow(notFound(problem)).given(controlMappingApiService).deleteMapping(MAPPING_ID);
+
+		assertThat(mvc.delete().uri("/api/dashboard/mappings/{id}", MAPPING_ID)).hasStatus(HttpStatus.NOT_FOUND)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void deleteMappingWhenTheControlMappingApiIsUnreachableReturnsBadGateway() {
+		willThrow(new RestClientException("The control mapping API is unavailable")).given(controlMappingApiService)
+			.deleteMapping(MAPPING_ID);
+
+		assertThat(mvc.delete().uri("/api/dashboard/mappings/{id}", MAPPING_ID)).hasStatus(HttpStatus.BAD_GATEWAY)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":502,\"detail\":\"The control mapping API is unavailable\"}");
+	}
+
+	@Test
+	void deleteMappingWithAMalformedIdReturnsBadRequest() {
+		assertThat(mvc.delete().uri("/api/dashboard/mappings/not-a-uuid")).hasStatus(HttpStatus.BAD_REQUEST);
+		then(controlMappingApiService).shouldHaveNoInteractions();
 	}
 
 	private static HttpClientErrorException notFound(String problem) {
