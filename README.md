@@ -50,6 +50,12 @@ Endpoints are shaped around the admin console screens, not the domain.
 | `POST /api/dashboard/files` | `frameworkId`, `title`, `sourceUrl`, `versionLabel`, `publicationDate` | `201`, empty body, `Location` header (`/api/dashboard/files/{id}`) |
 | `PUT /api/dashboard/files/{id}` | `title`, `sourceUrl`, `versionLabel`, `publicationDate` | `204`, empty body |
 | `DELETE /api/dashboard/files/{id}` | | `204`, empty body |
+| `POST /api/dashboard/control-groups` | `parentGroupId` (optional), `groupRef`, `title` | `201`, empty body, `Location` header (`/api/dashboard/control-groups/{id}`) |
+| `PUT /api/dashboard/control-groups/{id}` | `parentGroupId` (optional), `groupRef`, `title` | `204`, empty body |
+| `DELETE /api/dashboard/control-groups/{id}` | | `204`, empty body |
+| `POST /api/dashboard/controls` | `groupId` (optional), `parentControlId` (optional), `controlRef`, `title`, `statement` (optional) | `201`, empty body, `Location` header (`/api/dashboard/controls/{id}`) |
+| `PUT /api/dashboard/controls/{id}` | `groupId` (optional), `parentControlId` (optional), `controlRef`, `title`, `statement` (optional) | `204`, empty body |
+| `DELETE /api/dashboard/controls/{id}` | | `204`, empty body |
 | `POST /api/dashboard/mappings` | `requirementId`, `controlId`, `rationale` (optional) | `201`, empty body, `Location` header (`/api/dashboard/mappings/{id}`) |
 | `PUT /api/dashboard/mappings/{id}` | `rationale` | `204`, empty body |
 | `DELETE /api/dashboard/mappings/{id}` | | `204`, empty body |
@@ -59,6 +65,13 @@ Creates and deletes go through the ingestion service; edits (`PUT`) go to the Re
 directly. A `PUT` replaces every editable field: an optional field left out of the body (for
 example a framework's `citation` or a file's `sourceUrl`) is cleared; `enabled` is required. `publicationDate` is a date (`YYYY-MM-DD`). Deleting a file that
 still has requirements returns the ingestion service's `409`.
+
+Control groups and controls are written straight to the Control API. New ones get
+`createdBy = admin-console` as well. A `PUT` replaces every field, as the Control API does: an
+optional field left out (`parentGroupId`, `groupId`, `parentControlId`, `statement`) is cleared.
+`409` is returned for a duplicate `groupRef` or `controlRef`, a group that still has child groups or
+controls, and a control that still has enhancements; `404` for an unknown id, group or parent; `502`
+when the Control API fails, cannot be reached or returns no `Location`.
 
 Mapping writes go straight to the Control Mapping API. `PUT` replaces the rationale: a body without
 `rationale` clears it. The Control Mapping API does not check that the requirement and the control
@@ -124,6 +137,12 @@ curl -s -i -X PUT -H 'Content-Type: application/json' \
   -d '{"title":"DORA","sourceUrl":"https://eur-lex.europa.eu/eli/reg/2022/2554/oj","versionLabel":"OJ L 333, corrigendum","publicationDate":"2022-12-27"}' \
   http://localhost:8082/api/dashboard/files/<file id>
 curl -s -i -X DELETE http://localhost:8082/api/dashboard/files/<file id>
+curl -s -i -H 'Content-Type: application/json' \
+  -d '{"groupRef":"AC","title":"Access Control"}' \
+  http://localhost:8082/api/dashboard/control-groups
+curl -s -i -H 'Content-Type: application/json' \
+  -d '{"groupId":"<group id>","controlRef":"AC-2","title":"Account Management","statement":"Manage system accounts."}' \
+  http://localhost:8082/api/dashboard/controls
 curl -s -i -H 'Content-Type: application/json' \
   -d '{"requirementId":"<requirement id>","controlId":"<control id>","rationale":"Covers the requirement"}' \
   http://localhost:8082/api/dashboard/mappings

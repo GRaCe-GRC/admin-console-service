@@ -6,8 +6,12 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlGroupRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlGroupUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlMappingRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlMappingUpdateRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardAuthority;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardControl;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardControlGroup;
@@ -25,6 +29,7 @@ import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileUpd
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.service.DashboardService;
+import io.github.gracegrc.adminconsoleservice.service.control.ControlApiService;
 import io.github.gracegrc.adminconsoleservice.service.control.ControlMappingApiService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryApiService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryIngestionService;
@@ -99,6 +104,22 @@ class AdminConsoleServiceControllerTest {
 	private static final ControlMappingRequestDto MAPPING_REQUEST = new ControlMappingRequestDto(REQUIREMENT_ID,
 			CONTROL_ID, "Covers it");
 
+	private static final UUID GROUP_ID = UUID.fromString("6e7f8091-2b3c-4d4e-9f50-6b7c8d9e0f1a");
+
+	private static final UUID PARENT_GROUP_ID = UUID.fromString("5d6e7f80-1a2b-4c3d-8e4f-5a6b7c8d9e0f");
+
+	private static final String GROUP_BODY = "{\"parentGroupId\":\"" + PARENT_GROUP_ID
+			+ "\",\"groupRef\":\"AC-1\",\"title\":\"Policy and Procedures\"}";
+
+	private static final UUID PARENT_CONTROL_ID = UUID.fromString("7f809102-3c4d-4e5f-a061-7c8d9e0f1a2b");
+
+	private static final String CONTROL_BODY = "{\"groupId\":\"" + GROUP_ID + "\",\"parentControlId\":\""
+			+ PARENT_CONTROL_ID + "\",\"controlRef\":\"AC-2(1)\",\"title\":\"Automated Account Management\","
+			+ "\"statement\":\"Support the management...\"}";
+
+	private static final ControlRequestDto CONTROL_REQUEST = new ControlRequestDto(GROUP_ID, PARENT_CONTROL_ID,
+			"AC-2(1)", "Automated Account Management", "Support the management...");
+
 	@Autowired
 	private MockMvcTester mvc;
 
@@ -113,6 +134,9 @@ class AdminConsoleServiceControllerTest {
 
 	@MockitoBean
 	private ControlMappingApiService controlMappingApiService;
+
+	@MockitoBean
+	private ControlApiService controlApiService;
 
 	@Test
 	void getDashboardReturnsTheWholeDashboard() {
@@ -739,6 +763,307 @@ class AdminConsoleServiceControllerTest {
 	void deleteFileWithAMalformedIdReturnsBadRequest() {
 		assertThat(mvc.delete().uri("/api/dashboard/files/not-a-uuid")).hasStatus(HttpStatus.BAD_REQUEST);
 		then(regulatoryIngestionService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void postControlGroupCreatesItAndReturnsItsLocation() {
+		given(controlApiService
+			.createControlGroup(new ControlGroupRequestDto(PARENT_GROUP_ID, "AC-1", "Policy and Procedures")))
+			.willReturn(GROUP_ID);
+
+		assertThat(mvc.post().uri("/api/dashboard/control-groups").contentType(MediaType.APPLICATION_JSON).content(GROUP_BODY))
+			.hasStatus(HttpStatus.CREATED)
+			.hasHeader("Location", "http://localhost/api/dashboard/control-groups/" + GROUP_ID)
+			.body()
+			.isEmpty();
+	}
+
+	@Test
+	void postControlGroupWithInvalidFieldsReturnsBadRequestWithTheErrors() {
+		assertThat(mvc.post()
+			.uri("/api/dashboard/control-groups")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"groupRef\":\" \",\"title\":\"" + "x".repeat(256) + "\"}"))
+			.hasStatus(HttpStatus.BAD_REQUEST)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":400,\"errors\":{\"groupRef\":\"must not be blank\","
+					+ "\"title\":\"size must be between 0 and 255\"}}");
+		then(controlApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void postControlGroupWithADuplicateRefReturnsTheConflictUnchanged() {
+		String problem = "{\"title\":\"Conflict\",\"status\":409,"
+				+ "\"detail\":\"A control group with ref 'AC-1' already exists\"}";
+		given(controlApiService.createControlGroup(any())).willThrow(conflict(problem));
+
+		assertThat(mvc.post().uri("/api/dashboard/control-groups").contentType(MediaType.APPLICATION_JSON).content(GROUP_BODY))
+			.hasStatus(HttpStatus.CONFLICT)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void postControlGroupWithAnUnknownParentReturnsTheNotFoundUnchanged() {
+		String problem = "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"Control group " + PARENT_GROUP_ID
+				+ " not found\"}";
+		given(controlApiService.createControlGroup(any())).willThrow(notFound(problem));
+
+		assertThat(mvc.post().uri("/api/dashboard/control-groups").contentType(MediaType.APPLICATION_JSON).content(GROUP_BODY))
+			.hasStatus(HttpStatus.NOT_FOUND)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void postControlGroupWhenTheControlApiFailsReturnsBadGateway() {
+		given(controlApiService.createControlGroup(any()))
+			.willThrow(new RestClientException("The control API is unavailable"));
+
+		assertThat(mvc.post().uri("/api/dashboard/control-groups").contentType(MediaType.APPLICATION_JSON).content(GROUP_BODY))
+			.hasStatus(HttpStatus.BAD_GATEWAY)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":502,\"detail\":\"The control API is unavailable\"}");
+	}
+
+	@Test
+	void putControlGroupUpdatesItAndReturnsNoContent() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/control-groups/{id}", GROUP_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"groupRef\":\"AC\",\"title\":\"Access Control\"}"))
+			.hasStatus(HttpStatus.NO_CONTENT)
+			.body()
+			.isEmpty();
+		then(controlApiService).should()
+			.updateControlGroup(GROUP_ID, new ControlGroupUpdateRequestDto(null, "AC", "Access Control"));
+	}
+
+	@Test
+	void putControlGroupWithInvalidFieldsReturnsBadRequestWithTheErrors() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/control-groups/{id}", GROUP_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"parentGroupId\":\"" + PARENT_GROUP_ID + "\"}"))
+			.hasStatus(HttpStatus.BAD_REQUEST)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":400,\"errors\":{\"groupRef\":\"must not be blank\","
+					+ "\"title\":\"must not be blank\"}}");
+		then(controlApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void putControlGroupWithAnUnknownIdReturnsTheNotFoundUnchanged() {
+		String problem = "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"Control group " + GROUP_ID
+				+ " not found\"}";
+		willThrow(notFound(problem)).given(controlApiService).updateControlGroup(any(), any());
+
+		assertThat(mvc.put()
+			.uri("/api/dashboard/control-groups/{id}", GROUP_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"groupRef\":\"AC\",\"title\":\"Access Control\"}"))
+			.hasStatus(HttpStatus.NOT_FOUND)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void putControlGroupWithAMalformedIdReturnsBadRequest() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/control-groups/not-a-uuid")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"groupRef\":\"AC\",\"title\":\"Access Control\"}"))
+			.hasStatus(HttpStatus.BAD_REQUEST);
+		then(controlApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void deleteControlGroupReturnsNoContent() {
+		assertThat(mvc.delete().uri("/api/dashboard/control-groups/{id}", GROUP_ID)).hasStatus(HttpStatus.NO_CONTENT)
+			.body()
+			.isEmpty();
+		then(controlApiService).should().deleteControlGroup(GROUP_ID);
+	}
+
+	@Test
+	void deleteControlGroupWithChildrenReturnsTheConflictUnchanged() {
+		String problem = "{\"title\":\"Conflict\",\"status\":409,\"detail\":\"Control group " + GROUP_ID
+				+ " still has child groups or controls\"}";
+		willThrow(conflict(problem)).given(controlApiService).deleteControlGroup(GROUP_ID);
+
+		assertThat(mvc.delete().uri("/api/dashboard/control-groups/{id}", GROUP_ID)).hasStatus(HttpStatus.CONFLICT)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void deleteControlGroupWithAMalformedIdReturnsBadRequest() {
+		assertThat(mvc.delete().uri("/api/dashboard/control-groups/not-a-uuid")).hasStatus(HttpStatus.BAD_REQUEST);
+		then(controlApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void postControlCreatesItAndReturnsItsLocation() {
+		given(controlApiService.createControl(CONTROL_REQUEST)).willReturn(CONTROL_ID);
+
+		assertThat(mvc.post().uri("/api/dashboard/controls").contentType(MediaType.APPLICATION_JSON).content(CONTROL_BODY))
+			.hasStatus(HttpStatus.CREATED)
+			.hasHeader("Location", "http://localhost/api/dashboard/controls/" + CONTROL_ID)
+			.body()
+			.isEmpty();
+	}
+
+	@Test
+	void postControlWithOnlyTheRequiredFieldsCreatesIt() {
+		given(controlApiService.createControl(new ControlRequestDto(null, null, "AC-2", "Account Management", null)))
+			.willReturn(CONTROL_ID);
+
+		assertThat(mvc.post()
+			.uri("/api/dashboard/controls")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"controlRef\":\"AC-2\",\"title\":\"Account Management\"}"))
+			.hasStatus(HttpStatus.CREATED)
+			.hasHeader("Location", "http://localhost/api/dashboard/controls/" + CONTROL_ID);
+	}
+
+	@Test
+	void postControlWithInvalidFieldsReturnsBadRequestWithTheErrors() {
+		assertThat(mvc.post()
+			.uri("/api/dashboard/controls")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"controlRef\":\"" + "x".repeat(256) + "\",\"title\":\"\"}"))
+			.hasStatus(HttpStatus.BAD_REQUEST)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":400,\"errors\":{\"controlRef\":\"size must be between 0 and 255\","
+					+ "\"title\":\"must not be blank\"}}");
+		then(controlApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void postControlWithADuplicateRefReturnsTheConflictUnchanged() {
+		String problem = "{\"title\":\"Conflict\",\"status\":409,"
+				+ "\"detail\":\"A control with ref 'AC-2(1)' already exists\"}";
+		given(controlApiService.createControl(CONTROL_REQUEST)).willThrow(conflict(problem));
+
+		assertThat(mvc.post().uri("/api/dashboard/controls").contentType(MediaType.APPLICATION_JSON).content(CONTROL_BODY))
+			.hasStatus(HttpStatus.CONFLICT)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void postControlWithAnUnknownParentReturnsTheNotFoundUnchanged() {
+		String problem = "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"Control " + PARENT_CONTROL_ID
+				+ " not found\"}";
+		given(controlApiService.createControl(CONTROL_REQUEST)).willThrow(notFound(problem));
+
+		assertThat(mvc.post().uri("/api/dashboard/controls").contentType(MediaType.APPLICATION_JSON).content(CONTROL_BODY))
+			.hasStatus(HttpStatus.NOT_FOUND)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void postControlWhenTheControlApiReturnsAServerErrorReturnsBadGateway() {
+		given(controlApiService.createControl(CONTROL_REQUEST))
+			.willThrow(new RestClientException("The control API returned 500"));
+
+		assertThat(mvc.post().uri("/api/dashboard/controls").contentType(MediaType.APPLICATION_JSON).content(CONTROL_BODY))
+			.hasStatus(HttpStatus.BAD_GATEWAY)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":502,\"detail\":\"The control API returned 500\"}");
+	}
+
+	@Test
+	void putControlUpdatesEveryFieldAndReturnsNoContent() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/controls/{id}", CONTROL_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(CONTROL_BODY))
+			.hasStatus(HttpStatus.NO_CONTENT)
+			.body()
+			.isEmpty();
+		then(controlApiService).should()
+			.updateControl(CONTROL_ID, new ControlUpdateRequestDto(GROUP_ID, PARENT_CONTROL_ID, "AC-2(1)",
+					"Automated Account Management", "Support the management..."));
+	}
+
+	@Test
+	void putControlWithInvalidFieldsReturnsBadRequestWithTheErrors() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/controls/{id}", CONTROL_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"statement\":\"Only a statement\"}"))
+			.hasStatus(HttpStatus.BAD_REQUEST)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":400,\"errors\":{\"controlRef\":\"must not be blank\","
+					+ "\"title\":\"must not be blank\"}}");
+		then(controlApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void putControlWithADuplicateRefReturnsTheConflictUnchanged() {
+		String problem = "{\"title\":\"Conflict\",\"status\":409,"
+				+ "\"detail\":\"A control with ref 'AC-2(1)' already exists\"}";
+		willThrow(conflict(problem)).given(controlApiService).updateControl(any(), any());
+
+		assertThat(mvc.put()
+			.uri("/api/dashboard/controls/{id}", CONTROL_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(CONTROL_BODY))
+			.hasStatus(HttpStatus.CONFLICT)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void putControlWithAMalformedIdReturnsBadRequest() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/controls/not-a-uuid")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(CONTROL_BODY))
+			.hasStatus(HttpStatus.BAD_REQUEST);
+		then(controlApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void deleteControlReturnsNoContent() {
+		assertThat(mvc.delete().uri("/api/dashboard/controls/{id}", CONTROL_ID)).hasStatus(HttpStatus.NO_CONTENT)
+			.body()
+			.isEmpty();
+		then(controlApiService).should().deleteControl(CONTROL_ID);
+	}
+
+	@Test
+	void deleteControlWithEnhancementsReturnsTheConflictUnchanged() {
+		String problem = "{\"title\":\"Conflict\",\"status\":409,\"detail\":\"Control " + CONTROL_ID
+				+ " still has enhancements\"}";
+		willThrow(conflict(problem)).given(controlApiService).deleteControl(CONTROL_ID);
+
+		assertThat(mvc.delete().uri("/api/dashboard/controls/{id}", CONTROL_ID)).hasStatus(HttpStatus.CONFLICT)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void deleteControlWithAnUnknownIdReturnsTheNotFoundUnchanged() {
+		String problem = "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"Control " + CONTROL_ID
+				+ " not found\"}";
+		willThrow(notFound(problem)).given(controlApiService).deleteControl(CONTROL_ID);
+
+		assertThat(mvc.delete().uri("/api/dashboard/controls/{id}", CONTROL_ID)).hasStatus(HttpStatus.NOT_FOUND)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void deleteControlWithAMalformedIdReturnsBadRequest() {
+		assertThat(mvc.delete().uri("/api/dashboard/controls/not-a-uuid")).hasStatus(HttpStatus.BAD_REQUEST);
+		then(controlApiService).shouldHaveNoInteractions();
 	}
 
 	@Test
