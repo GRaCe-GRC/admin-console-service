@@ -2,9 +2,11 @@ package io.github.gracegrc.adminconsoleservice.service.regulatory;
 
 import io.github.gracegrc.adminconsoleservice.boot.client.RegulatoryIngestionServiceClient;
 import io.github.gracegrc.adminconsoleservice.domain.mapper.RegulatoryAuthorityMapper;
+import io.github.gracegrc.adminconsoleservice.domain.mapper.RegulatoryFileMapper;
 import io.github.gracegrc.adminconsoleservice.domain.mapper.RegulatoryFrameworkMapper;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityResponseDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFileResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkResponseDto;
@@ -60,8 +62,18 @@ public class RegulatoryIngestionServiceImpl implements RegulatoryIngestionServic
 	}
 
 	@Override
+	public UUID createFile(RegulatoryFileRequestDto request) {
+		return regulatoryIngestionServiceClient.createFile(RegulatoryFileMapper.toIngestionRequest(request, CREATED_BY));
+	}
+
+	@Override
 	public List<RegulatoryIngestionFileResponseDto> findAllFiles() {
 		return regulatoryIngestionServiceClient.findAllFiles();
+	}
+
+	@Override
+	public void deleteFile(UUID id) {
+		regulatoryIngestionServiceClient.deleteFile(id);
 	}
 
 	@Override

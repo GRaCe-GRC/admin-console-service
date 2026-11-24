@@ -13,6 +13,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import io.github.gracegrc.adminconsoleservice.boot.RegulatoryIngestionServiceConfig;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionAuthorityRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionAuthorityResponseDto;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFileRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFileResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkResponseDto;
@@ -63,6 +64,10 @@ class RegulatoryIngestionServiceClientTest {
 
 	private static final RegulatoryIngestionFrameworkRequestDto FRAMEWORK_REQUEST = new RegulatoryIngestionFrameworkRequestDto(
 			ID, "Digital Operational Resilience Act", "DORA", "Regulation (EU) 2022/2554", "admin-console");
+
+	private static final RegulatoryIngestionFileRequestDto FILE_REQUEST = new RegulatoryIngestionFileRequestDto(
+			FRAMEWORK_ID, "DORA", "https://eur-lex.europa.eu/eli/reg/2022/2554/oj", "OJ L 333",
+			LocalDate.parse("2022-12-27"), "admin-console");
 
 	@Autowired
 	private RegulatoryIngestionServiceClient client;
@@ -223,6 +228,62 @@ class RegulatoryIngestionServiceClientTest {
 		assertThat(client.findAllFiles()).containsExactly(new RegulatoryIngestionFileResponseDto(
 				FILE_ID, FRAMEWORK_ID, "DORA", "https://eur-lex.europa.eu/eli/reg/2022/2554/oj", "OJ L 333",
 				LocalDate.parse("2022-12-27"), CREATED_AT, "admin-console"));
+	}
+
+	@Test
+	void createFilePostsTheRequestAndReturnsTheIdFromTheLocation() {
+		server.expect(requestTo("http://ingestion.test/api/v1/files"))
+			.andExpect(method(HttpMethod.POST))
+			.andExpect(content().json("{\"frameworkId\":\"" + FRAMEWORK_ID + "\",\"title\":\"DORA\","
+					+ "\"sourceUrl\":\"https://eur-lex.europa.eu/eli/reg/2022/2554/oj\",\"versionLabel\":\"OJ L 333\","
+					+ "\"publicationDate\":\"2022-12-27\",\"createdBy\":\"admin-console\"}", true))
+			.andRespond(withStatus(HttpStatus.CREATED).location(URI.create("http://ingestion.test/api/v1/files/" + FILE_ID)));
+
+		assertThat(client.createFile(FILE_REQUEST)).isEqualTo(FILE_ID);
+	}
+
+	@Test
+	void createFileWithoutALocationThrows() {
+		server.expect(requestTo("http://ingestion.test/api/v1/files")).andRespond(withStatus(HttpStatus.CREATED));
+
+		assertThatThrownBy(() -> client.createFile(FILE_REQUEST)).isInstanceOf(RestClientException.class)
+			.hasMessage("The regulatory ingestion service did not return the location of the new file");
+	}
+
+	@Test
+	void createFileForAnUnknownFrameworkKeepsTheNotFound() {
+		String problem = "{\"status\":404,\"detail\":\"Framework " + FRAMEWORK_ID + " not found\"}";
+		server.expect(requestTo("http://ingestion.test/api/v1/files"))
+			.andRespond(withStatus(HttpStatus.NOT_FOUND).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(problem));
+
+		assertThatThrownBy(() -> client.createFile(FILE_REQUEST))
+			.isInstanceOfSatisfying(HttpClientErrorException.class, ex -> {
+				assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+				assertThat(ex.getResponseBodyAsString()).isEqualTo(problem);
+			});
+	}
+
+	@Test
+	void deleteFileSendsADeleteRequest() {
+		server.expect(requestTo("http://ingestion.test/api/v1/files/" + FILE_ID))
+			.andExpect(method(HttpMethod.DELETE))
+			.andRespond(withNoContent());
+
+		client.deleteFile(FILE_ID);
+	}
+
+	@Test
+	void deleteFileWithRequirementsKeepsTheConflict() {
+		String problem = "{\"status\":409,\"detail\":\"File " + FILE_ID + " has requirements. Delete them first.\"}";
+		server.expect(requestTo("http://ingestion.test/api/v1/files/" + FILE_ID))
+			.andExpect(method(HttpMethod.DELETE))
+			.andRespond(withStatus(HttpStatus.CONFLICT).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(problem));
+
+		assertThatThrownBy(() -> client.deleteFile(FILE_ID))
+			.isInstanceOfSatisfying(HttpClientErrorException.class, ex -> {
+				assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+				assertThat(ex.getResponseBodyAsString()).isEqualTo(problem);
+			});
 	}
 
 	@Test
