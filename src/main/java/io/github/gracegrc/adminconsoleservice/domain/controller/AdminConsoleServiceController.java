@@ -2,9 +2,11 @@ package io.github.gracegrc.adminconsoleservice.domain.controller;
 
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardResponseDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.service.DashboardService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryApiService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryIngestionService;
@@ -53,6 +55,13 @@ public class AdminConsoleServiceController {
 		return ResponseEntity.created(location).build();
 	}
 
+	@PutMapping("/authorities/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void updateAuthority(@PathVariable UUID id,
+			@Valid @RequestBody RegulatoryAuthorityUpdateRequestDto request) {
+		regulatoryApiService.updateAuthority(id, request);
+	}
+
 	@DeleteMapping("/authorities/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void delete(@PathVariable UUID id) {
@@ -64,6 +73,13 @@ public class AdminConsoleServiceController {
 		UUID id = regulatoryIngestionService.createFramework(request);
 		URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(id).toUri();
 		return ResponseEntity.created(location).build();
+	}
+
+	@PutMapping("/frameworks/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void updateFramework(@PathVariable UUID id,
+			@Valid @RequestBody RegulatoryFrameworkUpdateRequestDto request) {
+		regulatoryApiService.updateFramework(id, request);
 	}
 
 	@DeleteMapping("/frameworks/{id}")

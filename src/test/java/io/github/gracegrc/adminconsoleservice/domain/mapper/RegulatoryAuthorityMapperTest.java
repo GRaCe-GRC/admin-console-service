@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityResponseDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityUpdateRequestDto;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryApiAuthorityUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionAuthorityRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionAuthorityResponseDto;
 import java.time.Instant;
@@ -18,6 +20,14 @@ class RegulatoryAuthorityMapperTest {
 			.toIngestionRequest(new RegulatoryAuthorityRequestDto("EBA", "EU"), "admin-console");
 
 		assertThat(request).isEqualTo(new RegulatoryIngestionAuthorityRequestDto("EBA", "EU", "admin-console"));
+	}
+
+	@Test
+	void toRegulatoryApiUpdateRequestCopiesEveryField() {
+		RegulatoryApiAuthorityUpdateRequestDto request = RegulatoryAuthorityMapper
+			.toRegulatoryApiUpdateRequest(new RegulatoryAuthorityUpdateRequestDto("EBA", "EU", false));
+
+		assertThat(request).isEqualTo(new RegulatoryApiAuthorityUpdateRequestDto("EBA", "EU", false));
 	}
 
 	@Test

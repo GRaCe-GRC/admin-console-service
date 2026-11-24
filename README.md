@@ -42,8 +42,10 @@ Endpoints are shaped around the admin console screens, not the domain.
 |---|---|---|
 | `GET /api/dashboard` | | `200` with the whole dashboard (see below) |
 | `POST /api/dashboard/authorities` | `name`, `jurisdiction` | `201`, empty body, `Location` header |
+| `PUT /api/dashboard/authorities/{id}` | `name`, `jurisdiction`, `enabled` | `204`, empty body |
 | `DELETE /api/dashboard/authorities/{id}` | | `204`, empty body |
 | `POST /api/dashboard/frameworks` | `authorityId`, `name`, `shortName`, `citation` | `201`, empty body, `Location` header (`/api/dashboard/frameworks/{id}`) |
+| `PUT /api/dashboard/frameworks/{id}` | `name`, `shortName`, `citation`, `enabled` | `204`, empty body |
 | `DELETE /api/dashboard/frameworks/{id}` | | `204`, empty body |
 | `POST /api/dashboard/files` | `frameworkId`, `title`, `sourceUrl`, `versionLabel`, `publicationDate` | `201`, empty body, `Location` header (`/api/dashboard/files/{id}`) |
 | `PUT /api/dashboard/files/{id}` | `title`, `sourceUrl`, `versionLabel`, `publicationDate` | `204`, empty body |
@@ -52,7 +54,7 @@ Endpoints are shaped around the admin console screens, not the domain.
 New authorities, frameworks and files get `createdBy = admin-console` until authentication exists.
 Creates and deletes go through the ingestion service; edits (`PUT`) go to the Regulatory API
 directly. A `PUT` replaces every editable field: an optional field left out of the body (for
-example `sourceUrl`) is cleared. `publicationDate` is a date (`YYYY-MM-DD`). Deleting a file that
+example a framework's `citation` or a file's `sourceUrl`) is cleared; `enabled` is required. `publicationDate` is a date (`YYYY-MM-DD`). Deleting a file that
 still has requirements returns the ingestion service's `409`.
 
 `GET /api/dashboard` reads seven unfiltered lists in parallel (on virtual threads): authorities,
@@ -96,9 +98,15 @@ or the ingestion service returns no `Location`, the response is `502`. The HTTP 
 
 ```bash
 curl -s http://localhost:8082/api/dashboard
+curl -s -i -X PUT -H 'Content-Type: application/json' \
+  -d '{"name":"European Banking Authority","jurisdiction":"EU","enabled":true}' \
+  http://localhost:8082/api/dashboard/authorities/<authority id>
 curl -s -i -H 'Content-Type: application/json' \
   -d '{"authorityId":"<authority id>","name":"Digital Operational Resilience Act","shortName":"DORA","citation":"Regulation (EU) 2022/2554"}' \
   http://localhost:8082/api/dashboard/frameworks
+curl -s -i -X PUT -H 'Content-Type: application/json' \
+  -d '{"name":"Digital Operational Resilience Act","shortName":"DORA","citation":"Regulation (EU) 2022/2554","enabled":false}' \
+  http://localhost:8082/api/dashboard/frameworks/<framework id>
 curl -s -i -X DELETE http://localhost:8082/api/dashboard/frameworks/<framework id>
 curl -s -i -H 'Content-Type: application/json' \
   -d '{"frameworkId":"<framework id>","title":"DORA","sourceUrl":"https://eur-lex.europa.eu/eli/reg/2022/2554/oj","versionLabel":"OJ L 333","publicationDate":"2022-12-27"}' \

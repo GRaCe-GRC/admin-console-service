@@ -1,6 +1,8 @@
 package io.github.gracegrc.adminconsoleservice.domain.mapper;
 
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkUpdateRequestDto;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryApiFrameworkUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkRequestDto;
 
 public final class RegulatoryFrameworkMapper {
@@ -12,6 +14,12 @@ public final class RegulatoryFrameworkMapper {
 			String createdBy) {
 		return new RegulatoryIngestionFrameworkRequestDto(request.authorityId(), request.name(), request.shortName(),
 				request.citation(), createdBy);
+	}
+
+	public static RegulatoryApiFrameworkUpdateRequestDto toRegulatoryApiUpdateRequest(
+			RegulatoryFrameworkUpdateRequestDto request) {
+		return new RegulatoryApiFrameworkUpdateRequestDto(request.name(), request.shortName(), request.citation(),
+				request.enabled());
 	}
 
 }
