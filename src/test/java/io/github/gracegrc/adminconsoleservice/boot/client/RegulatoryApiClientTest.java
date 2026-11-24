@@ -11,7 +11,9 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import io.github.gracegrc.adminconsoleservice.boot.RegulatoryApiConfig;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryApiAuthorityUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryApiFileUpdateRequestDto;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryApiFrameworkUpdateRequestDto;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.time.LocalDate;
@@ -34,6 +36,10 @@ import org.springframework.web.client.RestClientException;
 @TestPropertySource(properties = "regulatory-api.base-url=http://regulatory.test")
 class RegulatoryApiClientTest {
 
+	private static final UUID AUTHORITY_ID = UUID.fromString("3f2c1a9e-7d4b-4e8a-9c1f-2b6d5e8a7c40");
+
+	private static final UUID FRAMEWORK_ID = UUID.fromString("8a1b2c3d-4e5f-4a6b-9c7d-0e1f2a3b4c5d");
+
 	private static final UUID FILE_ID = UUID.fromString("9b2c3d4e-5f60-4b7c-8d9e-1f2a3b4c5d6e");
 
 	private static final RegulatoryApiFileUpdateRequestDto FILE_REQUEST = new RegulatoryApiFileUpdateRequestDto(
@@ -48,6 +54,54 @@ class RegulatoryApiClientTest {
 	@AfterEach
 	void verifyAllRequestsWereMade() {
 		server.verify();
+	}
+
+	@Test
+	void updateAuthorityPutsEveryField() {
+		server.expect(requestTo("http://regulatory.test/api/v1/authorities/" + AUTHORITY_ID))
+			.andExpect(method(HttpMethod.PUT))
+			.andExpect(content().json("{\"name\":\"EBA\",\"jurisdiction\":\"EU\",\"enabled\":false}", true))
+			.andRespond(withSuccess("{\"id\":\"" + AUTHORITY_ID + "\",\"name\":\"EBA\"}", MediaType.APPLICATION_JSON));
+
+		client.updateAuthority(AUTHORITY_ID, new RegulatoryApiAuthorityUpdateRequestDto("EBA", "EU", false));
+	}
+
+	@Test
+	void updateAuthorityWithADuplicateNameKeepsTheConflict() {
+		String problem = "{\"status\":409,\"detail\":\"An authority named 'EBA' already exists\"}";
+		server.expect(requestTo("http://regulatory.test/api/v1/authorities/" + AUTHORITY_ID))
+			.andExpect(method(HttpMethod.PUT))
+			.andRespond(withStatus(HttpStatus.CONFLICT).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(problem));
+
+		assertThatThrownBy(
+				() -> client.updateAuthority(AUTHORITY_ID, new RegulatoryApiAuthorityUpdateRequestDto("EBA", "EU", true)))
+			.isInstanceOfSatisfying(HttpClientErrorException.class, ex -> {
+				assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+				assertThat(ex.getResponseBodyAsString()).isEqualTo(problem);
+			});
+	}
+
+	@Test
+	void updateFrameworkPutsEveryField() {
+		server.expect(requestTo("http://regulatory.test/api/v1/frameworks/" + FRAMEWORK_ID))
+			.andExpect(method(HttpMethod.PUT))
+			.andExpect(content().json("{\"name\":\"Digital Operational Resilience Act\",\"shortName\":\"DORA\","
+					+ "\"citation\":null,\"enabled\":true}", true))
+			.andRespond(withSuccess());
+
+		client.updateFramework(FRAMEWORK_ID,
+				new RegulatoryApiFrameworkUpdateRequestDto("Digital Operational Resilience Act", "DORA", null, true));
+	}
+
+	@Test
+	void updateFrameworkWhenTheApiFailsIsThrownAsAnInvalidResponseOfTheRegulatoryApi() {
+		server.expect(requestTo("http://regulatory.test/api/v1/frameworks/" + FRAMEWORK_ID))
+			.andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+		assertThatThrownBy(() -> client.updateFramework(FRAMEWORK_ID,
+				new RegulatoryApiFrameworkUpdateRequestDto("DORA", null, null, true)))
+			.isExactlyInstanceOf(RestClientException.class)
+			.hasMessage("The regulatory API returned 503");
 	}
 
 	@Test

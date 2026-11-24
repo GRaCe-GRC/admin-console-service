@@ -3,6 +3,8 @@ package io.github.gracegrc.adminconsoleservice.domain.mapper;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkUpdateRequestDto;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryApiFrameworkUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkRequestDto;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,16 @@ class RegulatoryFrameworkMapperTest {
 
 		assertThat(request).isEqualTo(new RegulatoryIngestionFrameworkRequestDto(AUTHORITY_ID,
 				"Digital Operational Resilience Act", "DORA", "Regulation (EU) 2022/2554", "admin-console"));
+	}
+
+	@Test
+	void toRegulatoryApiUpdateRequestCopiesEveryField() {
+		RegulatoryApiFrameworkUpdateRequestDto request = RegulatoryFrameworkMapper.toRegulatoryApiUpdateRequest(
+				new RegulatoryFrameworkUpdateRequestDto("Digital Operational Resilience Act", "DORA",
+						"Regulation (EU) 2022/2554", false));
+
+		assertThat(request).isEqualTo(new RegulatoryApiFrameworkUpdateRequestDto("Digital Operational Resilience Act",
+				"DORA", "Regulation (EU) 2022/2554", false));
 	}
 
 }

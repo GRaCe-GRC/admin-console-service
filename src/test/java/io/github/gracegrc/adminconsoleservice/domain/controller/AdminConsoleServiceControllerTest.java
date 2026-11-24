@@ -17,9 +17,11 @@ import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardMappedRe
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardRequirement;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardResponseDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.service.DashboardService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryApiService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryIngestionService;
@@ -56,6 +58,17 @@ class AdminConsoleServiceControllerTest {
 
 	private static final RegulatoryFrameworkRequestDto FRAMEWORK_REQUEST = new RegulatoryFrameworkRequestDto(ID,
 			"Digital Operational Resilience Act", "DORA", "Regulation (EU) 2022/2554");
+
+	private static final String AUTHORITY_UPDATE_BODY = "{\"name\":\"EBA\",\"jurisdiction\":\"EU\",\"enabled\":false}";
+
+	private static final RegulatoryAuthorityUpdateRequestDto AUTHORITY_UPDATE_REQUEST = new RegulatoryAuthorityUpdateRequestDto(
+			"EBA", "EU", false);
+
+	private static final String FRAMEWORK_UPDATE_BODY = "{\"name\":\"Digital Operational Resilience Act\","
+			+ "\"shortName\":\"DORA\",\"citation\":\"Regulation (EU) 2022/2554\",\"enabled\":true}";
+
+	private static final RegulatoryFrameworkUpdateRequestDto FRAMEWORK_UPDATE_REQUEST = new RegulatoryFrameworkUpdateRequestDto(
+			"Digital Operational Resilience Act", "DORA", "Regulation (EU) 2022/2554", true);
 
 	private static final UUID FILE_ID = UUID.fromString("9b2c3d4e-5f60-4b7c-8d9e-1f2a3b4c5d6e");
 
@@ -374,6 +387,177 @@ class AdminConsoleServiceControllerTest {
 	void deleteFrameworkWithAMalformedIdReturnsBadRequest() {
 		assertThat(mvc.delete().uri("/api/dashboard/frameworks/not-a-uuid")).hasStatus(HttpStatus.BAD_REQUEST);
 		then(regulatoryIngestionService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void putAuthorityUpdatesItAndReturnsNoContent() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/authorities/{id}", ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(AUTHORITY_UPDATE_BODY))
+			.hasStatus(HttpStatus.NO_CONTENT)
+			.body()
+			.isEmpty();
+		then(regulatoryApiService).should().updateAuthority(ID, AUTHORITY_UPDATE_REQUEST);
+	}
+
+	@Test
+	void putAuthorityWithInvalidFieldsReturnsBadRequestWithTheErrors() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/authorities/{id}", ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"name\":\" \",\"jurisdiction\":\"" + "x".repeat(256) + "\"}"))
+			.hasStatus(HttpStatus.BAD_REQUEST)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":400,\"errors\":{\"name\":\"must not be blank\","
+					+ "\"jurisdiction\":\"size must be between 0 and 255\",\"enabled\":\"must not be null\"}}");
+		then(regulatoryApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void putAuthorityWithAMalformedIdReturnsBadRequest() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/authorities/not-a-uuid")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(AUTHORITY_UPDATE_BODY))
+			.hasStatus(HttpStatus.BAD_REQUEST);
+		then(regulatoryApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void putAuthorityWithAnUnknownIdReturnsTheNotFoundUnchanged() {
+		String problem = "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"Authority " + ID + " not found\"}";
+		willThrow(notFound(problem)).given(regulatoryApiService).updateAuthority(ID, AUTHORITY_UPDATE_REQUEST);
+
+		assertThat(mvc.put()
+			.uri("/api/dashboard/authorities/{id}", ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(AUTHORITY_UPDATE_BODY))
+			.hasStatus(HttpStatus.NOT_FOUND)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void putAuthorityWithADuplicateNameReturnsTheConflictUnchanged() {
+		String problem = "{\"title\":\"Conflict\",\"status\":409,\"detail\":\"An authority named 'EBA' already exists\"}";
+		willThrow(conflict(problem)).given(regulatoryApiService).updateAuthority(ID, AUTHORITY_UPDATE_REQUEST);
+
+		assertThat(mvc.put()
+			.uri("/api/dashboard/authorities/{id}", ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(AUTHORITY_UPDATE_BODY))
+			.hasStatus(HttpStatus.CONFLICT)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void putAuthorityWhenTheRegulatoryApiIsUnreachableReturnsBadGateway() {
+		willThrow(new RestClientException("The regulatory API is unavailable")).given(regulatoryApiService)
+			.updateAuthority(ID, AUTHORITY_UPDATE_REQUEST);
+
+		assertThat(mvc.put()
+			.uri("/api/dashboard/authorities/{id}", ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(AUTHORITY_UPDATE_BODY))
+			.hasStatus(HttpStatus.BAD_GATEWAY)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":502,\"detail\":\"The regulatory API is unavailable\"}");
+	}
+
+	@Test
+	void putFrameworkUpdatesItAndReturnsNoContent() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/frameworks/{id}", FRAMEWORK_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(FRAMEWORK_UPDATE_BODY))
+			.hasStatus(HttpStatus.NO_CONTENT)
+			.body()
+			.isEmpty();
+		then(regulatoryApiService).should().updateFramework(FRAMEWORK_ID, FRAMEWORK_UPDATE_REQUEST);
+	}
+
+	@Test
+	void putFrameworkWithoutTheOptionalFieldsClearsThem() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/frameworks/{id}", FRAMEWORK_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"name\":\"DORA\",\"enabled\":true}"))
+			.hasStatus(HttpStatus.NO_CONTENT);
+		then(regulatoryApiService).should()
+			.updateFramework(FRAMEWORK_ID, new RegulatoryFrameworkUpdateRequestDto("DORA", null, null, true));
+	}
+
+	@Test
+	void putFrameworkWithInvalidFieldsReturnsBadRequestWithTheErrors() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/frameworks/{id}", FRAMEWORK_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"name\":\"\",\"citation\":\"" + "x".repeat(256) + "\"}"))
+			.hasStatus(HttpStatus.BAD_REQUEST)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":400,\"errors\":{\"name\":\"must not be blank\","
+					+ "\"citation\":\"size must be between 0 and 255\",\"enabled\":\"must not be null\"}}");
+		then(regulatoryApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void putFrameworkWithAMalformedIdReturnsBadRequest() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/frameworks/not-a-uuid")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(FRAMEWORK_UPDATE_BODY))
+			.hasStatus(HttpStatus.BAD_REQUEST);
+		then(regulatoryApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void putFrameworkWithAnUnknownIdReturnsTheNotFoundUnchanged() {
+		String problem = "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"Framework " + FRAMEWORK_ID
+				+ " not found\"}";
+		willThrow(notFound(problem)).given(regulatoryApiService).updateFramework(FRAMEWORK_ID, FRAMEWORK_UPDATE_REQUEST);
+
+		assertThat(mvc.put()
+			.uri("/api/dashboard/frameworks/{id}", FRAMEWORK_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(FRAMEWORK_UPDATE_BODY))
+			.hasStatus(HttpStatus.NOT_FOUND)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void putFrameworkWithADuplicateNameReturnsTheConflictUnchanged() {
+		String problem = "{\"title\":\"Conflict\",\"status\":409,"
+				+ "\"detail\":\"A framework named 'Digital Operational Resilience Act' already exists\"}";
+		willThrow(conflict(problem)).given(regulatoryApiService).updateFramework(FRAMEWORK_ID, FRAMEWORK_UPDATE_REQUEST);
+
+		assertThat(mvc.put()
+			.uri("/api/dashboard/frameworks/{id}", FRAMEWORK_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(FRAMEWORK_UPDATE_BODY))
+			.hasStatus(HttpStatus.CONFLICT)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void putFrameworkWhenTheRegulatoryApiFailsReturnsBadGateway() {
+		willThrow(new RestClientException("The regulatory API returned 500")).given(regulatoryApiService)
+			.updateFramework(FRAMEWORK_ID, FRAMEWORK_UPDATE_REQUEST);
+
+		assertThat(mvc.put()
+			.uri("/api/dashboard/frameworks/{id}", FRAMEWORK_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(FRAMEWORK_UPDATE_BODY))
+			.hasStatus(HttpStatus.BAD_GATEWAY)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":502,\"detail\":\"The regulatory API returned 500\"}");
 	}
 
 	@Test
