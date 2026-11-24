@@ -1,5 +1,7 @@
 package io.github.gracegrc.adminconsoleservice.domain.controller;
 
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlMappingRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlMappingUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardResponseDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityUpdateRequestDto;
@@ -8,6 +10,7 @@ import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileUpd
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.service.DashboardService;
+import io.github.gracegrc.adminconsoleservice.service.control.ControlMappingApiService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryApiService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryIngestionService;
 import jakarta.validation.Valid;
@@ -36,11 +39,15 @@ public class AdminConsoleServiceController {
 
 	private final DashboardService dashboardService;
 
+	private final ControlMappingApiService controlMappingApiService;
+
 	public AdminConsoleServiceController(RegulatoryIngestionService regulatoryIngestionService,
-			RegulatoryApiService regulatoryApiService, DashboardService dashboardService) {
+			RegulatoryApiService regulatoryApiService, DashboardService dashboardService,
+			ControlMappingApiService controlMappingApiService) {
 		this.regulatoryIngestionService = regulatoryIngestionService;
 		this.regulatoryApiService = regulatoryApiService;
 		this.dashboardService = dashboardService;
+		this.controlMappingApiService = controlMappingApiService;
 	}
 
 	@GetMapping
@@ -105,6 +112,25 @@ public class AdminConsoleServiceController {
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void deleteFile(@PathVariable UUID id) {
 		regulatoryIngestionService.deleteFile(id);
+	}
+
+	@PostMapping("/mappings")
+	public ResponseEntity<Void> createMapping(@Valid @RequestBody ControlMappingRequestDto request) {
+		UUID id = controlMappingApiService.createMapping(request);
+		URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(id).toUri();
+		return ResponseEntity.created(location).build();
+	}
+
+	@PutMapping("/mappings/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void updateMapping(@PathVariable UUID id, @Valid @RequestBody ControlMappingUpdateRequestDto request) {
+		controlMappingApiService.updateMapping(id, request);
+	}
+
+	@DeleteMapping("/mappings/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteMapping(@PathVariable UUID id) {
+		controlMappingApiService.deleteMapping(id);
 	}
 
 }

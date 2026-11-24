@@ -50,12 +50,20 @@ Endpoints are shaped around the admin console screens, not the domain.
 | `POST /api/dashboard/files` | `frameworkId`, `title`, `sourceUrl`, `versionLabel`, `publicationDate` | `201`, empty body, `Location` header (`/api/dashboard/files/{id}`) |
 | `PUT /api/dashboard/files/{id}` | `title`, `sourceUrl`, `versionLabel`, `publicationDate` | `204`, empty body |
 | `DELETE /api/dashboard/files/{id}` | | `204`, empty body |
+| `POST /api/dashboard/mappings` | `requirementId`, `controlId`, `rationale` (optional) | `201`, empty body, `Location` header (`/api/dashboard/mappings/{id}`) |
+| `PUT /api/dashboard/mappings/{id}` | `rationale` | `204`, empty body |
+| `DELETE /api/dashboard/mappings/{id}` | | `204`, empty body |
 
-New authorities, frameworks and files get `createdBy = admin-console` until authentication exists.
+New authorities, frameworks, files and mappings get `createdBy = admin-console` until authentication exists.
 Creates and deletes go through the ingestion service; edits (`PUT`) go to the Regulatory API
 directly. A `PUT` replaces every editable field: an optional field left out of the body (for
 example a framework's `citation` or a file's `sourceUrl`) is cleared; `enabled` is required. `publicationDate` is a date (`YYYY-MM-DD`). Deleting a file that
 still has requirements returns the ingestion service's `409`.
+
+Mapping writes go straight to the Control Mapping API. `PUT` replaces the rationale: a body without
+`rationale` clears it. The Control Mapping API does not check that the requirement and the control
+exist ([ADR 0006](https://github.com/GRaCe-GRC/GRaCe-GRC-docs/blob/main/adr/0006-controls-database-schemas.md)),
+and neither does this service yet; `409` means the requirement is already mapped to the control.
 
 `GET /api/dashboard` reads seven unfiltered lists in parallel (on virtual threads): authorities,
 frameworks, files and requirements from the ingestion service, control groups and controls from the
@@ -90,9 +98,10 @@ Control API, and control mappings from the Control Mapping API, in
   `[]`.
 
 Requests are validated here (`400` with an `errors` field per property); `4xx` problem details from
-the called services (for example `404` unknown authority or framework, `409` duplicate name or a
-framework that still has files) are returned unchanged; when one of them fails, cannot be reached
-or the ingestion service returns no `Location`, the response is `502`. The HTTP calls are in
+the called services (for example `404` unknown authority, framework, file or mapping, `409`
+duplicate name, a framework that still has files or a requirement already mapped to the control) are
+returned unchanged; when one of them fails, cannot be reached or returns no `Location` for a create,
+the response is `502`. The HTTP calls are in
 `boot/client` (`RegulatoryIngestionServiceClient`, `RegulatoryApiClient`, `ControlApiClient`,
 `ControlMappingApiClient`).
 
@@ -115,6 +124,12 @@ curl -s -i -X PUT -H 'Content-Type: application/json' \
   -d '{"title":"DORA","sourceUrl":"https://eur-lex.europa.eu/eli/reg/2022/2554/oj","versionLabel":"OJ L 333, corrigendum","publicationDate":"2022-12-27"}' \
   http://localhost:8082/api/dashboard/files/<file id>
 curl -s -i -X DELETE http://localhost:8082/api/dashboard/files/<file id>
+curl -s -i -H 'Content-Type: application/json' \
+  -d '{"requirementId":"<requirement id>","controlId":"<control id>","rationale":"Covers the requirement"}' \
+  http://localhost:8082/api/dashboard/mappings
+curl -s -i -X PUT -H 'Content-Type: application/json' -d '{"rationale":"Covers the requirement in full"}' \
+  http://localhost:8082/api/dashboard/mappings/<mapping id>
+curl -s -i -X DELETE http://localhost:8082/api/dashboard/mappings/<mapping id>
 ```
 
 ## Test and build
