@@ -1,7 +1,11 @@
 package io.github.gracegrc.adminconsoleservice.domain.controller;
 
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlGroupRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlGroupUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlMappingRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlMappingUpdateRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.ControlUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardResponseDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityUpdateRequestDto;
@@ -10,6 +14,7 @@ import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileUpd
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.service.DashboardService;
+import io.github.gracegrc.adminconsoleservice.service.control.ControlApiService;
 import io.github.gracegrc.adminconsoleservice.service.control.ControlMappingApiService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryApiService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryIngestionService;
@@ -41,13 +46,16 @@ public class AdminConsoleServiceController {
 
 	private final ControlMappingApiService controlMappingApiService;
 
+	private final ControlApiService controlApiService;
+
 	public AdminConsoleServiceController(RegulatoryIngestionService regulatoryIngestionService,
 			RegulatoryApiService regulatoryApiService, DashboardService dashboardService,
-			ControlMappingApiService controlMappingApiService) {
+			ControlMappingApiService controlMappingApiService, ControlApiService controlApiService) {
 		this.regulatoryIngestionService = regulatoryIngestionService;
 		this.regulatoryApiService = regulatoryApiService;
 		this.dashboardService = dashboardService;
 		this.controlMappingApiService = controlMappingApiService;
+		this.controlApiService = controlApiService;
 	}
 
 	@GetMapping
@@ -113,6 +121,45 @@ public class AdminConsoleServiceController {
 	public void deleteFile(@PathVariable UUID id) {
 		regulatoryIngestionService.deleteFile(id);
 	}
+
+	@PostMapping("/control-groups")
+	public ResponseEntity<Void> createControlGroup(@Valid @RequestBody ControlGroupRequestDto request) {
+		UUID id = controlApiService.createControlGroup(request);
+		URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(id).toUri();
+		return ResponseEntity.created(location).build();
+	}
+
+	@PutMapping("/control-groups/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void updateControlGroup(@PathVariable UUID id, @Valid @RequestBody ControlGroupUpdateRequestDto request) {
+		controlApiService.updateControlGroup(id, request);
+	}
+
+	@DeleteMapping("/control-groups/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteControlGroup(@PathVariable UUID id) {
+		controlApiService.deleteControlGroup(id);
+	}
+
+	@PostMapping("/controls")
+	public ResponseEntity<Void> createControl(@Valid @RequestBody ControlRequestDto request) {
+		UUID id = controlApiService.createControl(request);
+		URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(id).toUri();
+		return ResponseEntity.created(location).build();
+	}
+
+	@PutMapping("/controls/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void updateControl(@PathVariable UUID id, @Valid @RequestBody ControlUpdateRequestDto request) {
+		controlApiService.updateControl(id, request);
+	}
+
+	@DeleteMapping("/controls/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteControl(@PathVariable UUID id) {
+		controlApiService.deleteControl(id);
+	}
+
 
 	@PostMapping("/mappings")
 	public ResponseEntity<Void> createMapping(@Valid @RequestBody ControlMappingRequestDto request) {
