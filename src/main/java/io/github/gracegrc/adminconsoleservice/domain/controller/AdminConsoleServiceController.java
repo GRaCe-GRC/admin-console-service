@@ -2,8 +2,11 @@ package io.github.gracegrc.adminconsoleservice.domain.controller;
 
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardResponseDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.service.DashboardService;
+import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryApiService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryIngestionService;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -14,6 +17,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -26,11 +30,14 @@ public class AdminConsoleServiceController {
 
 	private final RegulatoryIngestionService regulatoryIngestionService;
 
+	private final RegulatoryApiService regulatoryApiService;
+
 	private final DashboardService dashboardService;
 
 	public AdminConsoleServiceController(RegulatoryIngestionService regulatoryIngestionService,
-			DashboardService dashboardService) {
+			RegulatoryApiService regulatoryApiService, DashboardService dashboardService) {
 		this.regulatoryIngestionService = regulatoryIngestionService;
+		this.regulatoryApiService = regulatoryApiService;
 		this.dashboardService = dashboardService;
 	}
 
@@ -63,6 +70,25 @@ public class AdminConsoleServiceController {
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void deleteFramework(@PathVariable UUID id) {
 		regulatoryIngestionService.deleteFramework(id);
+	}
+
+	@PostMapping("/files")
+	public ResponseEntity<Void> createFile(@Valid @RequestBody RegulatoryFileRequestDto request) {
+		UUID id = regulatoryIngestionService.createFile(request);
+		URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(id).toUri();
+		return ResponseEntity.created(location).build();
+	}
+
+	@PutMapping("/files/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void updateFile(@PathVariable UUID id, @Valid @RequestBody RegulatoryFileUpdateRequestDto request) {
+		regulatoryApiService.updateFile(id, request);
+	}
+
+	@DeleteMapping("/files/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteFile(@PathVariable UUID id) {
+		regulatoryIngestionService.deleteFile(id);
 	}
 
 }

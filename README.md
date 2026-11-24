@@ -4,6 +4,7 @@ Shared backend for the GRaCe-GRC admin console: review workflows and configurati
 
 > **Status:** backs the dashboard of the admin console, through the
 > [regulatory ingestion service](https://github.com/GRaCe-GRC/regulatory-ingestion-service), the
+> [Regulatory API](https://github.com/GRaCe-GRC/regulatory-api) (edits), the
 > [Control API](https://github.com/GRaCe-GRC/control-api) and the
 > [Control Mapping API](https://github.com/GRaCe-GRC/control-mapping-api).
 
@@ -12,8 +13,8 @@ Shared backend for the GRaCe-GRC admin console: review workflows and configurati
 - Maven, via the Maven wrapper (`./mvnw`)
 
 ## Getting started
-The service calls the regulatory ingestion service (which calls the Regulatory API), the Control
-API and the Control Mapping API. To run them on one machine, start those first (see their READMEs), then this
+The service calls the regulatory ingestion service (which calls the Regulatory API), the Regulatory
+API itself for edits, the Control API and the Control Mapping API. To run them on one machine, start those first (see their READMEs), then this
 service on another port:
 
 ```bash
@@ -23,6 +24,7 @@ SERVER_PORT=8082 ./mvnw spring-boot:run
 | Environment variable | Default | Description |
 |---|---|---|
 | `REGULATORY_INGESTION_SERVICE_URL` | `http://localhost:8081` | Base URL of the regulatory ingestion service |
+| `REGULATORY_API_URL` | `http://localhost:8080` | Base URL of the Regulatory API |
 | `CONTROL_API_URL` | `http://localhost:8083` | Base URL of the Control API |
 | `CONTROL_MAPPING_API_URL` | `http://localhost:8084` | Base URL of the Control Mapping API |
 
@@ -43,8 +45,15 @@ Endpoints are shaped around the admin console screens, not the domain.
 | `DELETE /api/dashboard/authorities/{id}` | | `204`, empty body |
 | `POST /api/dashboard/frameworks` | `authorityId`, `name`, `shortName`, `citation` | `201`, empty body, `Location` header (`/api/dashboard/frameworks/{id}`) |
 | `DELETE /api/dashboard/frameworks/{id}` | | `204`, empty body |
+| `POST /api/dashboard/files` | `frameworkId`, `title`, `sourceUrl`, `versionLabel`, `publicationDate` | `201`, empty body, `Location` header (`/api/dashboard/files/{id}`) |
+| `PUT /api/dashboard/files/{id}` | `title`, `sourceUrl`, `versionLabel`, `publicationDate` | `204`, empty body |
+| `DELETE /api/dashboard/files/{id}` | | `204`, empty body |
 
-New authorities and frameworks get `createdBy = admin-console` until authentication exists.
+New authorities, frameworks and files get `createdBy = admin-console` until authentication exists.
+Creates and deletes go through the ingestion service; edits (`PUT`) go to the Regulatory API
+directly. A `PUT` replaces every editable field: an optional field left out of the body (for
+example `sourceUrl`) is cleared. `publicationDate` is a date (`YYYY-MM-DD`). Deleting a file that
+still has requirements returns the ingestion service's `409`.
 
 `GET /api/dashboard` reads seven unfiltered lists in parallel (on virtual threads): authorities,
 frameworks, files and requirements from the ingestion service, control groups and controls from the
@@ -82,7 +91,8 @@ Requests are validated here (`400` with an `errors` field per property); `4xx` p
 the called services (for example `404` unknown authority or framework, `409` duplicate name or a
 framework that still has files) are returned unchanged; when one of them fails, cannot be reached
 or the ingestion service returns no `Location`, the response is `502`. The HTTP calls are in
-`boot/client` (`RegulatoryIngestionServiceClient`, `ControlApiClient`, `ControlMappingApiClient`).
+`boot/client` (`RegulatoryIngestionServiceClient`, `RegulatoryApiClient`, `ControlApiClient`,
+`ControlMappingApiClient`).
 
 ```bash
 curl -s http://localhost:8082/api/dashboard
@@ -90,6 +100,13 @@ curl -s -i -H 'Content-Type: application/json' \
   -d '{"authorityId":"<authority id>","name":"Digital Operational Resilience Act","shortName":"DORA","citation":"Regulation (EU) 2022/2554"}' \
   http://localhost:8082/api/dashboard/frameworks
 curl -s -i -X DELETE http://localhost:8082/api/dashboard/frameworks/<framework id>
+curl -s -i -H 'Content-Type: application/json' \
+  -d '{"frameworkId":"<framework id>","title":"DORA","sourceUrl":"https://eur-lex.europa.eu/eli/reg/2022/2554/oj","versionLabel":"OJ L 333","publicationDate":"2022-12-27"}' \
+  http://localhost:8082/api/dashboard/files
+curl -s -i -X PUT -H 'Content-Type: application/json' \
+  -d '{"title":"DORA","sourceUrl":"https://eur-lex.europa.eu/eli/reg/2022/2554/oj","versionLabel":"OJ L 333, corrigendum","publicationDate":"2022-12-27"}' \
+  http://localhost:8082/api/dashboard/files/<file id>
+curl -s -i -X DELETE http://localhost:8082/api/dashboard/files/<file id>
 ```
 
 ## Test and build

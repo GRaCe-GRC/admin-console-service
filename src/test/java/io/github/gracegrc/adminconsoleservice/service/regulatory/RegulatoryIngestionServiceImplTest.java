@@ -7,14 +7,17 @@ import static org.mockito.BDDMockito.then;
 import io.github.gracegrc.adminconsoleservice.boot.client.RegulatoryIngestionServiceClient;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityResponseDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionAuthorityRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionAuthorityResponseDto;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFileRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFileResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionRequirementResponseDto;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -100,6 +103,26 @@ class RegulatoryIngestionServiceImplTest {
 		given(regulatoryIngestionServiceClient.findAllFiles()).willReturn(files);
 
 		assertThat(regulatoryIngestionService.findAllFiles()).isEqualTo(files);
+	}
+
+	@Test
+	void createFileSendsTheRequestWithCreatedByAdminConsole() {
+		UUID fileId = UUID.fromString("9b2c3d4e-5f60-4b7c-8d9e-1f2a3b4c5d6e");
+		LocalDate publicationDate = LocalDate.parse("2022-12-27");
+		given(regulatoryIngestionServiceClient.createFile(new RegulatoryIngestionFileRequestDto(ID, "DORA",
+				"https://example.org/dora", "OJ L 333", publicationDate, "admin-console")))
+			.willReturn(fileId);
+
+		assertThat(regulatoryIngestionService.createFile(
+				new RegulatoryFileRequestDto(ID, "DORA", "https://example.org/dora", "OJ L 333", publicationDate)))
+			.isEqualTo(fileId);
+	}
+
+	@Test
+	void deleteFileAsksTheClientToDeleteIt() {
+		regulatoryIngestionService.deleteFile(ID);
+
+		then(regulatoryIngestionServiceClient).should().deleteFile(ID);
 	}
 
 	@Test

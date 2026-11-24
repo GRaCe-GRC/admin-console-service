@@ -17,8 +17,11 @@ import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardMappedRe
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardRequirement;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.DashboardResponseDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileRequestDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileUpdateRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.service.DashboardService;
+import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryApiService;
 import io.github.gracegrc.adminconsoleservice.service.regulatory.RegulatoryIngestionService;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -54,11 +57,28 @@ class AdminConsoleServiceControllerTest {
 	private static final RegulatoryFrameworkRequestDto FRAMEWORK_REQUEST = new RegulatoryFrameworkRequestDto(ID,
 			"Digital Operational Resilience Act", "DORA", "Regulation (EU) 2022/2554");
 
+	private static final UUID FILE_ID = UUID.fromString("9b2c3d4e-5f60-4b7c-8d9e-1f2a3b4c5d6e");
+
+	private static final String FILE_BODY = "{\"frameworkId\":\"" + FRAMEWORK_ID + "\",\"title\":\"DORA\","
+			+ "\"sourceUrl\":\"https://example.org/dora\",\"versionLabel\":\"OJ L 333\",\"publicationDate\":\"2022-12-27\"}";
+
+	private static final RegulatoryFileRequestDto FILE_REQUEST = new RegulatoryFileRequestDto(FRAMEWORK_ID, "DORA",
+			"https://example.org/dora", "OJ L 333", LocalDate.parse("2022-12-27"));
+
+	private static final String FILE_UPDATE_BODY = "{\"title\":\"DORA\",\"sourceUrl\":\"https://example.org/dora\","
+			+ "\"versionLabel\":\"OJ L 333\",\"publicationDate\":\"2022-12-27\"}";
+
+	private static final RegulatoryFileUpdateRequestDto FILE_UPDATE_REQUEST = new RegulatoryFileUpdateRequestDto("DORA",
+			"https://example.org/dora", "OJ L 333", LocalDate.parse("2022-12-27"));
+
 	@Autowired
 	private MockMvcTester mvc;
 
 	@MockitoBean
 	private RegulatoryIngestionService regulatoryIngestionService;
+
+	@MockitoBean
+	private RegulatoryApiService regulatoryApiService;
 
 	@MockitoBean
 	private DashboardService dashboardService;
@@ -353,6 +373,169 @@ class AdminConsoleServiceControllerTest {
 	@Test
 	void deleteFrameworkWithAMalformedIdReturnsBadRequest() {
 		assertThat(mvc.delete().uri("/api/dashboard/frameworks/not-a-uuid")).hasStatus(HttpStatus.BAD_REQUEST);
+		then(regulatoryIngestionService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void postFileCreatesItAndReturnsItsLocation() {
+		given(regulatoryIngestionService.createFile(FILE_REQUEST)).willReturn(FILE_ID);
+
+		assertThat(mvc.post().uri("/api/dashboard/files").contentType(MediaType.APPLICATION_JSON).content(FILE_BODY))
+			.hasStatus(HttpStatus.CREATED)
+			.hasHeader("Location", "http://localhost/api/dashboard/files/" + FILE_ID)
+			.body()
+			.isEmpty();
+	}
+
+	@Test
+	void postFileWithInvalidFieldsReturnsBadRequestWithTheErrors() {
+		assertThat(mvc.post()
+			.uri("/api/dashboard/files")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"title\":\" \",\"versionLabel\":\"" + "x".repeat(256) + "\"}"))
+			.hasStatus(HttpStatus.BAD_REQUEST)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":400,\"errors\":{\"frameworkId\":\"must not be null\","
+					+ "\"title\":\"must not be blank\",\"versionLabel\":\"size must be between 0 and 255\"}}");
+		then(regulatoryIngestionService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void postFileForAnUnknownFrameworkReturnsTheNotFoundUnchanged() {
+		String problem = "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"Framework " + FRAMEWORK_ID
+				+ " not found\"}";
+		given(regulatoryIngestionService.createFile(FILE_REQUEST)).willThrow(notFound(problem));
+
+		assertThat(mvc.post().uri("/api/dashboard/files").contentType(MediaType.APPLICATION_JSON).content(FILE_BODY))
+			.hasStatus(HttpStatus.NOT_FOUND)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void postFileWhenTheIngestionServiceIsUnreachableReturnsBadGateway() {
+		given(regulatoryIngestionService.createFile(FILE_REQUEST))
+			.willThrow(new ResourceAccessException("Connection refused"));
+
+		assertThat(mvc.post().uri("/api/dashboard/files").contentType(MediaType.APPLICATION_JSON).content(FILE_BODY))
+			.hasStatus(HttpStatus.BAD_GATEWAY)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":502,\"detail\":\"The regulatory ingestion service is unavailable\"}");
+	}
+
+	@Test
+	void putFileUpdatesItAndReturnsNoContent() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/files/{id}", FILE_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(FILE_UPDATE_BODY))
+			.hasStatus(HttpStatus.NO_CONTENT)
+			.body()
+			.isEmpty();
+		then(regulatoryApiService).should().updateFile(FILE_ID, FILE_UPDATE_REQUEST);
+	}
+
+	@Test
+	void putFileWithOnlyATitleClearsTheOptionalFields() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/files/{id}", FILE_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"title\":\"DORA\"}"))
+			.hasStatus(HttpStatus.NO_CONTENT);
+		then(regulatoryApiService).should()
+			.updateFile(FILE_ID, new RegulatoryFileUpdateRequestDto("DORA", null, null, null));
+	}
+
+	@Test
+	void putFileWithInvalidFieldsReturnsBadRequestWithTheErrors() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/files/{id}", FILE_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"versionLabel\":\"" + "x".repeat(256) + "\"}"))
+			.hasStatus(HttpStatus.BAD_REQUEST)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":400,\"errors\":{\"title\":\"must not be blank\","
+					+ "\"versionLabel\":\"size must be between 0 and 255\"}}");
+		then(regulatoryApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void putFileWithAMalformedIdReturnsBadRequest() {
+		assertThat(mvc.put()
+			.uri("/api/dashboard/files/not-a-uuid")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(FILE_UPDATE_BODY))
+			.hasStatus(HttpStatus.BAD_REQUEST);
+		then(regulatoryApiService).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void putFileWithAnUnknownIdReturnsTheNotFoundUnchanged() {
+		String problem = "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"File " + FILE_ID + " not found\"}";
+		willThrow(notFound(problem)).given(regulatoryApiService).updateFile(FILE_ID, FILE_UPDATE_REQUEST);
+
+		assertThat(mvc.put()
+			.uri("/api/dashboard/files/{id}", FILE_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(FILE_UPDATE_BODY))
+			.hasStatus(HttpStatus.NOT_FOUND)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void putFileWhenTheRegulatoryApiFailsReturnsBadGateway() {
+		willThrow(new RestClientException("The regulatory API returned 500")).given(regulatoryApiService)
+			.updateFile(FILE_ID, FILE_UPDATE_REQUEST);
+
+		assertThat(mvc.put()
+			.uri("/api/dashboard/files/{id}", FILE_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(FILE_UPDATE_BODY))
+			.hasStatus(HttpStatus.BAD_GATEWAY)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":502,\"detail\":\"The regulatory API returned 500\"}");
+	}
+
+	@Test
+	void putFileWhenTheRegulatoryApiIsUnreachableReturnsBadGateway() {
+		willThrow(new RestClientException("The regulatory API is unavailable")).given(regulatoryApiService)
+			.updateFile(FILE_ID, FILE_UPDATE_REQUEST);
+
+		assertThat(mvc.put()
+			.uri("/api/dashboard/files/{id}", FILE_ID)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content(FILE_UPDATE_BODY))
+			.hasStatus(HttpStatus.BAD_GATEWAY)
+			.bodyJson()
+			.isLenientlyEqualTo("{\"status\":502,\"detail\":\"The regulatory API is unavailable\"}");
+	}
+
+	@Test
+	void deleteFileReturnsNoContent() {
+		assertThat(mvc.delete().uri("/api/dashboard/files/{id}", FILE_ID)).hasStatus(HttpStatus.NO_CONTENT)
+			.body()
+			.isEmpty();
+		then(regulatoryIngestionService).should().deleteFile(FILE_ID);
+	}
+
+	@Test
+	void deleteFileWithRequirementsReturnsTheConflictUnchanged() {
+		String problem = "{\"title\":\"Conflict\",\"status\":409,\"detail\":\"File " + FILE_ID
+				+ " has requirements. Delete them first.\"}";
+		willThrow(conflict(problem)).given(regulatoryIngestionService).deleteFile(FILE_ID);
+
+		assertThat(mvc.delete().uri("/api/dashboard/files/{id}", FILE_ID)).hasStatus(HttpStatus.CONFLICT)
+			.hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+			.bodyText()
+			.isEqualTo(problem);
+	}
+
+	@Test
+	void deleteFileWithAMalformedIdReturnsBadRequest() {
+		assertThat(mvc.delete().uri("/api/dashboard/files/not-a-uuid")).hasStatus(HttpStatus.BAD_REQUEST);
 		then(regulatoryIngestionService).shouldHaveNoInteractions();
 	}
 

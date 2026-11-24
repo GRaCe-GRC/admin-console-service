@@ -2,6 +2,7 @@ package io.github.gracegrc.adminconsoleservice.service.regulatory;
 
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryAuthorityResponseDto;
+import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFileRequestDto;
 import io.github.gracegrc.adminconsoleservice.domain.model.dto.RegulatoryFrameworkRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFileResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkResponseDto;
@@ -23,7 +24,11 @@ public interface RegulatoryIngestionService {
 
 	void deleteFramework(UUID id);
 
+	UUID createFile(RegulatoryFileRequestDto request);
+
 	List<RegulatoryIngestionFileResponseDto> findAllFiles();
+
+	void deleteFile(UUID id);
 
 	List<RegulatoryIngestionRequirementResponseDto> findAllRequirements();
 

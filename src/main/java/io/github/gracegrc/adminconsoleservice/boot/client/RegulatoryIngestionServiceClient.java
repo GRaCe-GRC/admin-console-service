@@ -2,6 +2,7 @@ package io.github.gracegrc.adminconsoleservice.boot.client;
 
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionAuthorityRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionAuthorityResponseDto;
+import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFileRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFileResponseDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkRequestDto;
 import io.github.gracegrc.adminconsoleservice.service.model.dto.RegulatoryIngestionFrameworkResponseDto;
@@ -77,12 +78,27 @@ public class RegulatoryIngestionServiceClient {
 		regulatoryIngestionServiceRestClient.delete().uri(FRAMEWORKS_PATH + "/{id}", id).retrieve().toBodilessEntity();
 	}
 
+	public UUID createFile(RegulatoryIngestionFileRequestDto request) {
+		URI location = regulatoryIngestionServiceRestClient.post()
+			.uri(FILES_PATH)
+			.body(request)
+			.retrieve()
+			.toBodilessEntity()
+			.getHeaders()
+			.getLocation();
+		return idFrom(location, "file");
+	}
+
 	public List<RegulatoryIngestionFileResponseDto> findAllFiles() {
 		return regulatoryIngestionServiceRestClient.get()
 			.uri(FILES_PATH)
 			.retrieve()
 			.body(new ParameterizedTypeReference<>() {
 			});
+	}
+
+	public void deleteFile(UUID id) {
+		regulatoryIngestionServiceRestClient.delete().uri(FILES_PATH + "/{id}", id).retrieve().toBodilessEntity();
 	}
 
 	public List<RegulatoryIngestionRequirementResponseDto> findAllRequirements() {
